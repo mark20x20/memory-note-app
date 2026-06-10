@@ -1,0 +1,31 @@
+# SNS Share Card Design Prompts v2
+
+## 1. 共通方針
+
+- Create polished, realistic social share card image mockups for “Memory Note / 思い出ノート”
+- Japanese UI text only for on-card labels, with a premium and friendly tone
+- Instagram-first visual balance: beautiful, readable, shareable, not crowded
+- Warm cream / ivory background, coral accent, teal map accent
+- Rounded corners, subtle shadows, clean spacing, editorial and premium feel
+- Show a real shareable poster/card, not a wireframe
+- Include a blurred or simplified mini map and route line, never precise GPS or exact address
+- Make the main photo the hero in photo-first layouts
+- Include “Made with Memory Note” naturally and subtly
+- Avoid social feed UI, likes, comments, followers, chat bubbles, or booking-app visuals
+- Avoid dark mode, neon colors, heavy glassmorphism, or overly futuristic AI styling
+- The output should look like a finished SNS share card image suitable for posting
+
+[SHARE_CARD_1_1_PHOTO_FIRST_PROMPT]
+Square 1:1 SNS share card image, polished realistic social-ready poster for “Memory Note / 思い出ノート”, photo-first template. Warm cream background, coral accent, teal map accent, rounded white card, subtle shadow, premium editorial layout, designed for Instagram and X. Large hero photo dominates the composition, with a clean Japanese title such as “京都おでかけノート”, a visible date like “2026.06.07”, a location name like “京都・祇園”, and a short diary line in Japanese such as “たくさん歩いて、甘いものも食べた一日。” Show photo count and spot count in small elegant chips, for example “12枚” and “3スポット”. Add a small simplified mini map strip with a soft teal route line and a few pins, but no exact GPS, no address, no detailed coordinates. Place the app logo subtly and “Made with Memory Note” naturally at the bottom edge. Balanced square layout, strong center focus, highly shareable, clean typography, realistic mobile-design aesthetic, not a wireframe, not a travel booking ad, not a social feed.
+
+[SHARE_CARD_4_5_PHOTO_FIRST_PROMPT]
+Portrait 4:5 SNS share card image, polished realistic Instagram post design for “Memory Note / 思い出ノート”, photo-first template with stronger visual impact. Warm cream and ivory background, coral main accent, teal map accent, rounded card, soft shadows, refined spacing, premium and friendly Japanese mobile-app style. Large hero photo fills most of the upper area, with elegant overlay text: Japanese title such as “週末カフェ巡り”, date “2026.06.07”, location “東京・代官山”, and a short Japanese diary sentence like “気になるお店をはしごして、ゆっくり過ごせた。” Include small chips for “8枚” and “4スポット”. Add a subtle mini map and route line near the lower section, simplified and decorative, no precise GPS, no exact address. Keep text minimal and highly readable for Instagram. Include the app logo and “Made with Memory Note” in a subtle, tasteful way at the bottom. Vertical 4:5 layout optimized for feed posting, elegant, photo-led, modern scrapbook feel, realistic app-generated share poster, not noisy, not a feed UI, not travel booking, not cartoon, not illustration.
+
+[SHARE_CARD_9_16_STORY_PROMPT]
+Tall 9:16 SNS story share card image, polished realistic story poster for “Memory Note / 思い出ノート”, photo-first template optimized for Instagram Stories. Warm cream background with soft coral and teal accents, rounded cards, subtle shadow, premium editorial composition, clean Japanese typography. Use a tall vertical layout with the hero photo centered or slightly top-aligned, leaving stylish breathing room above and below. Show Japanese title such as “海辺の日帰り旅”, date “2026.06.07”, location “鎌倉・由比ヶ浜”, and a short diary line like “潮風が気持ちよくて、写真を撮る手が止まらなかった。” Include compact chips for “15枚” and “5スポット”. Add a simplified mini map, route line, and a few pins in a visually elegant lower or mid-lower area, but never show precise GPS or address details. Make the design feel like a beautiful story-ready card, with strong readability and generous negative space. Place “Made with Memory Note” naturally near the bottom along with the app logo. Vertical 9:16 story format, dramatic and shareable, polished but calm, not a social feed, not a travel ad, not a UI screenshot full of controls.
+
+[SHARE_CARD_MAP_FIRST_PROMPT]
+SNS share card image in a map-first layout for “Memory Note / 思い出ノート”, polished realistic poster, designed for Instagram and other social sharing. Warm cream background, coral accents for key labels, teal accents for map and route, rounded cards, subtle shadows, clean and premium Japanese mobile-app aesthetics. The map or mini route visualization is the hero element, showing a simplified stylized route with a few elegant pins and soft map blocks, but no exact GPS coordinates and no address. Include a smaller main photo panel, Japanese title such as “1日おでかけ記録”, date, location name, short diary line, photo count, and spot count. Make the route and spot flow visually clear, like “3スポット”, “徒歩で移動”, or similar Japanese labels. Add “Made with Memory Note” subtly and naturally, plus the app logo. The composition should feel like a beautiful memory map postcard, more graphic and organized than photo-first, but still warm and emotional. High readability, balanced spacing, not crowded, not a travel booking app, not navigation UI, not a social feed, no likes/comments/followers.
+
+[SHARE_CARD_DIARY_FIRST_PROMPT]
+SNS share card image in a diary-first layout for “Memory Note / 思い出ノート”, polished realistic social poster focused on emotion and short diary text. Warm cream / ivory background, coral accent, teal map accent used lightly, rounded card, subtle shadows, refined editorial composition, premium and intimate Japanese style. The main focus is a large, readable Japanese diary quote or short memory line, for example “何気ない一日だったけど、いちばん好きな日になった。” Include a smaller hero photo, a Japanese title such as “記念日のおでかけ”, date “2026.06.07”, location “横浜・みなとみらい”, photo count, spot count, and a tiny simplified mini map with a soft teal route line. Make the text feel emotional and handwritten-in-spirit but still clean and modern. Add “Made with Memory Note” subtly at the bottom with the app logo. This layout should emphasize the diary and feeling more than the map, while remaining elegant and highly shareable, not crowded, not a feed UI, not illustration, not a generic travel poster.
