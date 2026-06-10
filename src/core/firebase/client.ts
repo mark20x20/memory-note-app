@@ -1,8 +1,9 @@
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
-import { getAuth, Auth } from 'firebase/auth';
+import { initializeAuth, getAuth, getReactNativePersistence, Auth } from 'firebase/auth';
 import { getFirestore, Firestore } from 'firebase/firestore';
 import { getStorage, FirebaseStorage } from 'firebase/storage';
 import { getFunctions, Functions } from 'firebase/functions';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ENV } from '@/utils/env';
 
 const firebaseConfig = {
@@ -15,7 +16,6 @@ const firebaseConfig = {
   ...(ENV.FIREBASE_MEASUREMENT_ID ? { measurementId: ENV.FIREBASE_MEASUREMENT_ID } : {}),
 };
 
-// Skip initialization if required config values are missing
 const isConfigured = Boolean(firebaseConfig.apiKey && firebaseConfig.projectId);
 
 function getOrInitApp(): FirebaseApp | null {
@@ -23,8 +23,19 @@ function getOrInitApp(): FirebaseApp | null {
   return getApps().length ? getApp() : initializeApp(firebaseConfig);
 }
 
+function getOrInitAuth(app: FirebaseApp): Auth {
+  try {
+    return initializeAuth(app, {
+      persistence: getReactNativePersistence(AsyncStorage),
+    });
+  } catch {
+    // Already initialized (hot reload)
+    return getAuth(app);
+  }
+}
+
 export const firebaseApp: FirebaseApp | null = getOrInitApp();
-export const auth: Auth | null = firebaseApp ? getAuth(firebaseApp) : null;
+export const auth: Auth | null = firebaseApp ? getOrInitAuth(firebaseApp) : null;
 export const db: Firestore | null = firebaseApp ? getFirestore(firebaseApp) : null;
 export const storage: FirebaseStorage | null = firebaseApp ? getStorage(firebaseApp) : null;
 export const functions: Functions | null = firebaseApp

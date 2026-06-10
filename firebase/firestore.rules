@@ -1,8 +1,13 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Phase 1 で実装する
-    // 現時点では全拒否（安全デフォルト）
+
+    // users/{uid}: 自分のドキュメントのみ read/write 可
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // その他のコレクションは認証済みでも原則拒否（Phase 3以降で順次開放）
     match /{document=**} {
       allow read, write: if false;
     }

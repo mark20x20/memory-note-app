@@ -3,9 +3,9 @@ import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { useAuthSession } from '@/features/auth/hooks/useAuthSession';
 
 export default function Index() {
-  const { isLoading, isAuthenticated } = useAuthSession();
+  const authState = useAuthSession();
 
-  if (isLoading) {
+  if (authState.status === 'loading') {
     return (
       <View style={styles.container}>
         <ActivityIndicator size="large" color="#4A90D9" />
@@ -13,8 +13,12 @@ export default function Index() {
     );
   }
 
-  if (isAuthenticated) {
+  if (authState.status === 'signedIn') {
     return <Redirect href="/(app)/home" />;
+  }
+
+  if (authState.status === 'needsProfileSetup') {
+    return <Redirect href="/(auth)/profile-setup" />;
   }
 
   return <Redirect href="/(auth)/onboarding" />;

@@ -1,30 +1,52 @@
 import { useEffect, useState } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
-import { auth } from '@/core/firebase/client';
+import { doc, getDoc } from 'firebase/firestore';
+import { auth, db } from '@/core/firebase/client';
+import type { AuthState, UserProfile } from '@/features/auth/types';
 
-export interface AuthSession {
-  isLoading: boolean;
-  isAuthenticated: boolean;
-  userId: string | null;
-}
+export type { AuthState };
 
-export function useAuthSession(): AuthSession {
-  const [state, setState] = useState<AuthSession>({
-    // If Firebase is not configured, skip loading state entirely
-    isLoading: auth !== null,
-    isAuthenticated: false,
-    userId: null,
-  });
+export function useAuthSession(): AuthState {
+  const [state, setState] = useState<AuthState>(
+    auth !== null ? { status: 'loading' } : { status: 'signedOut' }
+  );
 
   useEffect(() => {
     if (!auth) return;
 
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setState({
-        isLoading: false,
-        isAuthenticated: user !== null,
-        userId: user?.uid ?? null,
-      });
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (!firebaseUser) {
+        setState({ status: 'signedOut' });
+        return;
+      }
+
+      setState({ status: 'loading' });
+
+      if (!db) {
+        setState({ status: 'needsProfileSetup', uid: firebaseUser.uid, email: firebaseUser.email });
+        return;
+      }
+
+      try {
+        const snap = await getDoc(doc(db, 'users', firebaseUser.uid));
+        if (!snap.exists()) {
+          setState({ status: 'needsProfileSetup', uid: firebaseUser.uid, email: firebaseUser.email });
+          return;
+        }
+        const data = snap.data();
+        const profile: UserProfile = {
+          uid: firebaseUser.uid,
+          email: data.email ?? null,
+          displayName: data.displayName ?? '',
+          photoURL: data.photoURL ?? null,
+          plan: data.plan ?? 'free',
+          createdAt: data.createdAt?.toDate?.()?.toISOString() ?? null,
+          updatedAt: data.updatedAt?.toDate?.()?.toISOString() ?? null,
+        };
+        setState({ status: 'signedIn', user: profile });
+      } catch {
+        setState({ status: 'needsProfileSetup', uid: firebaseUser.uid, email: firebaseUser.email });
+      }
     });
 
     return unsubscribe;

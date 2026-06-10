@@ -1,3 +1,4 @@
+import { router } from 'expo-router';
 import {
   View,
   Text,
@@ -7,7 +8,6 @@ import {
   SafeAreaView,
 } from 'react-native';
 
-// Phase 0: プレースホルダーデータ。Phase 1 以降で Firestore から取得する
 const PLACEHOLDER_NOTES: never[] = [];
 
 export default function HomeScreen() {
@@ -17,14 +17,22 @@ export default function HomeScreen() {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>思い出ノート</Text>
-        <TouchableOpacity
-          style={styles.createButton}
-          onPress={() => {
-            // TODO Phase 2: ノート作成画面へ
-          }}
-        >
-          <Text style={styles.createButtonText}>＋</Text>
-        </TouchableOpacity>
+        <View style={styles.headerRight}>
+          <TouchableOpacity
+            style={styles.settingsButton}
+            onPress={() => router.push('/(app)/settings')}
+          >
+            <Text style={styles.settingsButtonText}>⚙</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.createButton}
+            onPress={() => {
+              // TODO Phase 3: ノート作成画面へ
+            }}
+          >
+            <Text style={styles.createButtonText}>＋</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {isEmpty ? (
@@ -37,7 +45,7 @@ export default function HomeScreen() {
           <TouchableOpacity
             style={styles.emptyButton}
             onPress={() => {
-              // TODO Phase 2: ノート作成画面へ
+              // TODO Phase 3: ノート作成画面へ
             }}
           >
             <Text style={styles.emptyButtonText}>ノートを作る</Text>
@@ -74,6 +82,22 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '700',
     color: '#1A1A1A',
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  settingsButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  settingsButtonText: {
+    fontSize: 20,
   },
   createButton: {
     width: 40,
