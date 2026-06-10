@@ -1,9 +1,9 @@
 import { Redirect, Stack } from 'expo-router';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
-import { useAuthSession } from '@/features/auth/hooks/useAuthSession';
+import { useAuth } from '@/core/auth/AuthContext';
 
 export default function AppLayout() {
-  const authState = useAuthSession();
+  const authState = useAuth();
 
   if (authState.status === 'loading') {
     return (
@@ -18,10 +18,7 @@ export default function AppLayout() {
   }
 
   return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="home" />
-      <Stack.Screen name="settings" />
-    </Stack>
+    <Stack screenOptions={{ headerShown: false }} />
   );
 }
 

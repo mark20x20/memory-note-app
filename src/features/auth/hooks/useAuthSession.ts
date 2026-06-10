@@ -1,56 +1,12 @@
-import { useEffect, useState } from 'react';
-import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
-import { auth, db } from '@/core/firebase/client';
-import type { AuthState, UserProfile } from '@/features/auth/types';
+/**
+ * useAuthSession forwards to useAuth (AuthContext) so that all components
+ * share the single Firebase Auth subscription set up in AuthProvider.
+ */
+import { useAuth } from '@/core/auth/AuthContext';
+import type { AuthState } from '@/features/auth/types';
 
 export type { AuthState };
 
 export function useAuthSession(): AuthState {
-  const [state, setState] = useState<AuthState>(
-    auth !== null ? { status: 'loading' } : { status: 'signedOut' }
-  );
-
-  useEffect(() => {
-    if (!auth) return;
-
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (!firebaseUser) {
-        setState({ status: 'signedOut' });
-        return;
-      }
-
-      setState({ status: 'loading' });
-
-      if (!db) {
-        setState({ status: 'needsProfileSetup', uid: firebaseUser.uid, email: firebaseUser.email });
-        return;
-      }
-
-      try {
-        const snap = await getDoc(doc(db, 'users', firebaseUser.uid));
-        if (!snap.exists()) {
-          setState({ status: 'needsProfileSetup', uid: firebaseUser.uid, email: firebaseUser.email });
-          return;
-        }
-        const data = snap.data();
-        const profile: UserProfile = {
-          uid: firebaseUser.uid,
-          email: data.email ?? null,
-          displayName: data.displayName ?? '',
-          photoURL: data.photoURL ?? null,
-          plan: data.plan ?? 'free',
-          createdAt: data.createdAt?.toDate?.()?.toISOString() ?? null,
-          updatedAt: data.updatedAt?.toDate?.()?.toISOString() ?? null,
-        };
-        setState({ status: 'signedIn', user: profile });
-      } catch {
-        setState({ status: 'needsProfileSetup', uid: firebaseUser.uid, email: firebaseUser.email });
-      }
-    });
-
-    return unsubscribe;
-  }, []);
-
-  return state;
+  return useAuth();
 }

@@ -5,15 +5,17 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  SafeAreaView,
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import { useAuthSession } from '@/features/auth/hooks/useAuthSession';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useAuth } from '@/core/auth/AuthContext';
 import { authRepository } from '@/core/repositories/authRepository';
+import { ScreenHeader } from '@/shared/components/ui';
+import { colors } from '@/shared/theme/colors';
 
 export default function SettingsScreen() {
-  const authState = useAuthSession();
+  const authState = useAuth();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const displayName = authState.status === 'signedIn' ? authState.user.displayName : '';
@@ -46,14 +48,11 @@ export default function SettingsScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Text style={styles.backText}>← 戻る</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>設定</Text>
-        <View style={styles.placeholder} />
-      </View>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      <ScreenHeader
+        title="設定"
+        onBack={() => router.back()}
+      />
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>アカウント</Text>
@@ -65,7 +64,7 @@ export default function SettingsScreen() {
           <View style={styles.separator} />
           <View style={styles.row}>
             <Text style={styles.rowLabel}>メールアドレス</Text>
-            <Text style={styles.rowValue}>{email || '未設定'}</Text>
+            <Text style={styles.rowValue} numberOfLines={1}>{email || '未設定'}</Text>
           </View>
           <View style={styles.separator} />
           <View style={styles.row}>
@@ -76,7 +75,7 @@ export default function SettingsScreen() {
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>その他</Text>
+        <Text style={styles.sectionTitle}>サポート・情報</Text>
         <View style={styles.card}>
           <TouchableOpacity style={styles.row}>
             <Text style={styles.rowLabel}>利用規約</Text>
@@ -95,6 +94,12 @@ export default function SettingsScreen() {
         </View>
       </View>
 
+      <View style={styles.section}>
+        <Text style={styles.sectionNote}>
+          ※ 設定詳細・権限説明・プライバシー管理は Phase 14 で実装予定
+        </Text>
+      </View>
+
       <View style={styles.logoutSection}>
         <TouchableOpacity
           style={[styles.logoutButton, isLoggingOut && styles.disabled]}
@@ -102,7 +107,7 @@ export default function SettingsScreen() {
           disabled={isLoggingOut}
         >
           {isLoggingOut ? (
-            <ActivityIndicator color="#EF4444" />
+            <ActivityIndicator color={colors.error} />
           ) : (
             <Text style={styles.logoutText}>ログアウト</Text>
           )}
@@ -115,29 +120,7 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-  },
-  backText: {
-    fontSize: 16,
-    color: '#4A90D9',
-  },
-  headerTitle: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: '#1A1A1A',
-  },
-  placeholder: {
-    width: 40,
+    backgroundColor: colors.background,
   },
   section: {
     marginTop: 24,
@@ -146,13 +129,19 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#6B7280',
+    color: colors.textSecondary,
     marginBottom: 8,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
+  sectionNote: {
+    fontSize: 12,
+    color: colors.textTertiary,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
   card: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     overflow: 'hidden',
   },
@@ -165,21 +154,21 @@ const styles = StyleSheet.create({
   },
   rowLabel: {
     fontSize: 16,
-    color: '#1A1A1A',
+    color: colors.textPrimary,
   },
   rowValue: {
     fontSize: 15,
-    color: '#6B7280',
-    maxWidth: '60%',
+    color: colors.textSecondary,
+    maxWidth: '55%',
     textAlign: 'right',
   },
   rowArrow: {
     fontSize: 20,
-    color: '#9CA3AF',
+    color: colors.gray400,
   },
   separator: {
     height: 1,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: colors.border,
     marginLeft: 16,
   },
   logoutSection: {
@@ -187,15 +176,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   logoutButton: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: 'center',
     borderWidth: 1.5,
-    borderColor: '#EF4444',
+    borderColor: colors.error,
   },
   logoutText: {
-    color: '#EF4444',
+    color: colors.error,
     fontSize: 16,
     fontWeight: '600',
   },

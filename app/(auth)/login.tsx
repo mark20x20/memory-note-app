@@ -33,7 +33,6 @@ export default function LoginScreen() {
     setError(null);
     try {
       await authRepository.signIn(email.trim(), password);
-      // Navigation handled by useAuthSession in index.tsx
     } catch (e) {
       setError(e instanceof Error ? e.message : 'ログインに失敗しました。');
     } finally {
