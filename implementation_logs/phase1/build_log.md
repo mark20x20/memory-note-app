@@ -92,3 +92,31 @@ npx expo start -c
 
 - SafeAreaView deprecated warning が表示された
 - 現時点ではクラッシュ要因ではないため、Phase 2以降またはUI調整時に react-native-safe-area-context の SafeAreaView へ置き換える
+
+## Firebase 実設定後の Expo Go 起動確認
+
+### 実施内容
+
+- Firebase Console で memory-note-app-dev を作成
+- Authentication を有効化
+- Firestore Database を作成
+- Storage を作成
+- Web App の Firebase config を .env に設定
+- npx expo start -c で起動確認
+
+### 結果
+
+- iPhone / Expo Go でログイン画面まで表示確認
+- Firebase config 設定後もアプリはクラッシュしなかった
+- Firebase Auth は初期化されている
+
+### 警告
+
+- Firebase Auth の AsyncStorage persistence 未設定警告あり
+- SafeAreaView deprecated warning あり
+
+### 判断
+
+- Phase 1 Firebase foundation は実機確認まで完了
+- Auth persistence は Phase 2 で対応する
+- SafeAreaView warning は UI調整時に対応する
