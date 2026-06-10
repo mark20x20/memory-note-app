@@ -1,7 +1,13 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useEffect } from 'react';
+import { connectToEmulators } from '@/core/firebase/emulator';
 
 export default function RootLayout() {
+  useEffect(() => {
+    connectToEmulators();
+  }, []);
+
   return (
     <>
       <StatusBar style="auto" />
