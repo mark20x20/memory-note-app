@@ -63,6 +63,7 @@
 | Phase 2 | Auth / Profile | 認証・プロフィール・セッション管理 |
 | Phase 3 | Core Navigation / UI Shell | アプリの画面骨格・ルーティング・共通UI |
 | Phase 4 | Figma Make UI Reference Integration | Figma草案を実装UIへ落とし込む |
+| Phase 4.5 | UI Design System / Figma Screen Map Finalization | UIルール固定・ルート整理・Figma生成ルール定義 |
 | Phase 5 | Memory Note Creation | ノート作成フローの基本実装 |
 | Phase 6 | Photo Picker / Metadata Extraction | 写真選択とEXIF取得 |
 | Phase 7 | Firebase Storage Upload | 写真アップロードと同期 |
@@ -175,6 +176,31 @@
 **完了条件**
 - デザイン参照から実装への変換ルートが明確
 - 画面単位でレビュー可能
+
+---
+
+### Phase 4.5: UI Design System / Figma Screen Map Finalization
+**目的**
+- Phase 5 以降でデザインがブレないようにUIルールを固定する
+- 未定義だったExpo Routerルートを整理し、全画面の設計地図を完成させる
+- Figma Make の生成・保存・採用・実装反映のルールを文書化する
+
+**成果物**
+- `generated_ui/figma_make/ui_design_system.md` — カラー / フォント / 余白 / 角丸 / 影 / コンポーネントルール
+- `generated_ui/figma_make/figma_make_common_prompt.md` — Figma Make 共通プロンプト（完成形）
+- `generated_ui/figma_make/generation_rules.md` — 生成・保存・採用判断ルール
+- `generated_ui/figma_make/implementation_rules.md` — Figma → React Native 実装反映ルール
+- `generated_ui/figma_make/phase_plan.md` — Phase別 Figma 作成・実装計画
+- `generated_ui/figma_make/screen_priority.md` — 画面優先順位（A / B / C）
+- `generated_ui/figma_make/reference_map.md` — 全38画面の予定ルート・Figma優先度・実装Phase補強版
+- `app/index.tsx`, `app/(app)/_layout.tsx` — ActivityIndicator の色を `colors.primary` に修正
+
+**完了条件**
+- 主要画面の予定 Expo Router ルートが全て決まっている
+- Figma Make 共通プロンプトが完成している
+- UI Design System md がある
+- 生成ルールと実装反映ルールがある
+- Phase 5 以降で Figma を参照して実装できる状態になっている
 
 ---
 
