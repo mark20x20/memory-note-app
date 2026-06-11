@@ -1,5 +1,9 @@
 # Figma Make 共通プロンプト — Memory Note / 思い出ノート
 
+> **このファイルは Figma Make を使う場合の任意資料です。**
+> Figma Make が使えない場合は、`ui_design_system.md` と `reference_map.md` を参照して直接 React Native 実装を進めてください。
+> Figma Make を使わなくても Phase 5 以降へ進めます。
+
 ## 1. アプリ概要
 
 **アプリ名**: Memory Note / 思い出ノート  

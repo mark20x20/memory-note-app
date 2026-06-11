@@ -1,5 +1,10 @@
 # Figma Make 生成ルール — Memory Note / 思い出ノート
 
+> **方針（Phase 4.5 後）**: Figma Make は有料ツールのため**使える場合のみ任意で使用する**。
+> Figma Make がなくても実装を進めてよい。
+> Figma Make を使わない場合は、`ui_design_system.md` と `reference_map.md` を参照して Claude / Codex が直接 React Native 実装を行う。
+> 手動で作成した UI 案やスクリーンショットがある場合も、同じフォルダ構成（`generated_ui/figma_make/phaseX_xxx/`）に保存してよい。
+
 ## 1. 生成単位
 
 ### 1回の生成で扱う画面数
@@ -8,13 +13,15 @@
 - 密接に関連する画面（例: 生成プレビュー + タイトル編集 + 日記編集）はセットにしてよい
 - 関係のない画面を同時に生成しない
 
-### Phaseごとの生成対象
+### Phaseごとの生成対象（任意）
 
-| Phase | 生成対象画面 |
+> 以下は Figma Make が使える場合の参考情報です。生成しなくても各 Phase の実装を進められます。
+
+| Phase | 任意生成対象画面 |
 |---|---|
-| Phase 4.5（本Phase） | Home / Create / Note Detail / Settings の参照確認 |
-| Phase 5 | Create Note (作成開始 / 写真選択 / プレビュー) |
-| Phase 6 | Upload Progress / Processing |
+| Phase 4.5（完了） | Home / Create / Note Detail / Settings の参照確認 |
+| Phase 5 | Create Note (作成開始 / プレビュー) |
+| Phase 6 | Photo Selection / Upload Progress / Processing |
 | Phase 7 | Upload Progress 詳細（再試行含む）|
 | Phase 8 | Map View / Note Detail の地図セクション |
 | Phase 9 | AI Preview / Title Edit / Diary Edit |
@@ -117,22 +124,31 @@ YYYY-MM-DD
 
 ---
 
-## 6. 生成前チェックリスト
+## 6. Figma Make を使う場合のチェックリスト（任意）
 
-Figma Make で生成する前に確認すること:
+生成前に確認すること:
 
 - [ ] `figma_make_common_prompt.md` の共通ベースプロンプトを先頭に貼る
 - [ ] 対象画面IDと `reference_map.md` のルートを確認する
 - [ ] `ui_design_system.md` の該当セクションを確認する
 - [ ] 生成する画面に合わせた追加プロンプトを用意する
 
----
-
-## 7. 生成後チェックリスト
-
-Figma Make の出力を受け取ったら:
+生成後に確認すること:
 
 - [ ] `ui_design_system.md` の評価基準でレビューする
 - [ ] 採用 / 不採用 / 保留を記録する
 - [ ] `figma_output_notes.md` に判断と理由を記録する
-- [ ] 採用した場合は `reference_map.md` の「Figma草案保存場所」列を更新する
+- [ ] 採用した場合は `reference_map.md` の「任意UI草案保存場所」列を更新する
+
+---
+
+## 7. Figma Make を使わない場合のフロー（標準）
+
+Figma Make なしで実装を進める手順:
+
+1. `reference_map.md` で対象画面の予定ルートと実装Phaseを確認する
+2. `ui_design_system.md` のカラー / 余白 / カード / ボタン / フォームルールを確認する
+3. `implementation_rules.md` のコード規約を確認する
+4. React Native で実装する（`colors.ts` トークン必須）
+5. `npx tsc --noEmit` + `npx expo lint` でチェック
+6. `reference_map.md` の実装状態を更新する

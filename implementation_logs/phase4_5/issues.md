@@ -41,15 +41,12 @@ npx expo lint
 
 ---
 
-## I5: Figma Make の実際の生成はまだ行われていない
+## I5: Figma Make の生成は任意対応
 
-**状態**: Phase 5 開始前に実施予定
-**詳細**: Phase 4.5 では Figma Make 生成のルール・プロンプト・保存場所を整備したが、実際の生成はまだ行っていない。`generated_ui/figma_make/phase5_memory_note_creation/` 以降のフォルダはまだ空。
-**対応方針**: Phase 5 実装開始前にユーザーが Figma Make で以下を生成する:
-- SCR-CREATE-001（作成開始）
-- SCR-CREATE-002（写真選択）
-- SCR-HOME-001（ノートカード一覧状態）
-**影響**: Phase 5 実装を始める前に生成しておくことを推奨。生成なしでも実装は可能（参考なしで進む）。
+**状態**: 任意対応（問題ではない）
+**詳細**: Figma Make は有料ツールのため、使える場合のみ任意で使用する方針に変更。生成物がなくても Phase 5 以降の実装を進めてよい。`generated_ui/figma_make/phase5_memory_note_creation/` 等のフォルダは使える場合に活用する。
+**対応方針**: UIの正は `ui_design_system.md` と `reference_map.md`。これらを参照すれば Figma Make なしで実装可能。
+**影響**: なし。
 
 ---
 

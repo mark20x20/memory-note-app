@@ -20,12 +20,20 @@
    - 最低限のルール: 本人のみ read/write 可能
 
 2. **`memory_notes` スキーマを確定する**
-   - `implementation_logs/phase4/next_steps.md` §3 参照
    - フィールド: `title`, `memo`, `ownerId`, `createdAt`, `updatedAt`
 
-3. **Figma Make で Create 画面を生成する（推奨）**
+3. **`noteRepository.ts` の設計を決める**
+   - `createNote(uid, { title, memo })` → `memory_notes/{noteId}` に保存するインターフェース
+
+4. **Create 画面のフォーム化設計を決める**
+   - タイトル入力・メモ入力フォームの状態管理方針
+
+5. **Home 画面のノート一覧表示設計を決める**
+   - `memory_notes` を `ownerId == uid` でクエリして一覧表示する方針
+
+**任意（Figma Make が使える場合のみ）**:
    - `generated_ui/figma_make/figma_make_common_prompt.md` §2〜3 のプロンプトを使用
-   - 生成対象: SCR-CREATE-001, SCR-CREATE-002, SCR-HOME-001（ノートあり状態）
+   - 生成対象: SCR-CREATE-001, SCR-HOME-001（ノートあり状態）
    - 保存先: `generated_ui/figma_make/phase5_memory_note_creation/`
 
 ### 必須実装
@@ -83,12 +91,13 @@
 
 ---
 
-## Figma で次に作るべき画面
-
-Phase 5 実装前に以下を Figma Make で生成することを推奨:
+## Figma で次に作れる画面（Figma Make が使える場合のみ・任意）
 
 1. **SCR-CREATE-001** — 作成開始（本実装版: タイトル入力・メモ入力フォームあり）
 2. **SCR-HOME-001** — ホーム（ノートカードが並んでいる状態）
 
 プロンプトは `generated_ui/figma_make/figma_make_common_prompt.md` を参照。
 保存先は `generated_ui/figma_make/phase5_memory_note_creation/`。
+
+**Figma Make を使わない場合**:
+`ui_design_system.md` と `reference_map.md` を参照して直接 React Native 実装を進めてください。
