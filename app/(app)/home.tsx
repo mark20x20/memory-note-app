@@ -113,7 +113,7 @@ function NoteCard({ note, onPress }: { note: NoteDoc; onPress: () => void }) {
 
   return (
     <TouchableOpacity style={styles.noteCard} onPress={onPress} activeOpacity={0.85}>
-      {/* Cover placeholder */}
+      {/* カバー写真プレースホルダー — Phase 7 で Storage 実写真に置き換え予定 */}
       <View style={styles.noteCardCover}>
         <Text style={styles.noteCardCoverEmoji}>📷</Text>
       </View>

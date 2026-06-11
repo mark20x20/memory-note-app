@@ -7,11 +7,13 @@ import {
   ScrollView,
   TextInput,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ScreenHeader } from '@/shared/components/ui';
 import { colors } from '@/shared/theme/colors';
 import { useCreateNote } from '@/features/memoryNotes/hooks/useCreateNote';
+import { usePhotoPicker } from '@/features/photos/hooks/usePhotoPicker';
 import { useAuth } from '@/core/auth/AuthContext';
 
 const CREATION_STEPS = [
@@ -46,6 +48,16 @@ export default function CreateScreen() {
     isSaving, error, saveNote,
   } = useCreateNote();
 
+  const {
+    photos,
+    isPicking,
+    error: photoError,
+    pickPhotos,
+    removePhoto,
+  } = usePhotoPicker();
+
+  const hasPhotos = photos.length > 0;
+
   async function handleSave() {
     if (!uid) return;
     const noteId = await saveNote(uid);
@@ -66,64 +78,109 @@ export default function CreateScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* ── メイン導線: 写真から作る ── */}
-        <View style={styles.hero}>
-          <Text style={styles.heroEmoji}>📸</Text>
-          <Text style={styles.heroTitle}>写真を選んで{'\n'}思い出ノートを作ろう</Text>
-          <Text style={styles.heroDescription}>
-            写真を選ぶだけで、日付・場所・AIコメント付きの思い出ノートが自動で作れます
-          </Text>
-        </View>
-
-        {/* 3ステップカード */}
-        <View style={styles.stepsSection}>
-          <Text style={styles.sectionLabel}>作成の流れ</Text>
-          <View style={styles.stepsCard}>
-            {CREATION_STEPS.map((item, index) => (
-              <View key={item.step}>
-                <View style={styles.stepRow}>
-                  <View style={styles.stepNumberBadge}>
-                    <Text style={styles.stepNumberText}>{item.step}</Text>
-                  </View>
-                  <Text style={styles.stepEmoji}>{item.emoji}</Text>
-                  <View style={styles.stepContent}>
-                    <Text style={styles.stepTitle}>{item.title}</Text>
-                    <Text style={styles.stepDescription}>{item.description}</Text>
-                  </View>
-                </View>
-                {index < CREATION_STEPS.length - 1 && (
-                  <View style={styles.stepConnector} />
-                )}
-              </View>
-            ))}
-          </View>
-        </View>
-
-        {/* 写真を選ぶボタン — disabled until Phase 6 */}
-        <View style={styles.photoSection}>
-          <TouchableOpacity style={styles.photoButton} disabled activeOpacity={0.85}>
-            <Text style={styles.photoButtonText}>📷　写真を選ぶ</Text>
-          </TouchableOpacity>
-          <Text style={styles.hintText}>
-            写真選択は Phase 6 で対応予定です。今は下のテスト作成で保存確認できます。
-          </Text>
-        </View>
-
-        {/* ── デバッグ導線: 写真なしでテスト作成 ── */}
-        <View style={styles.debugSection}>
-          {/* ヘッダー */}
-          <View style={styles.debugHeader}>
-            <View style={styles.debugBadge}>
-              <Text style={styles.debugBadgeText}>開発中の確認用</Text>
-            </View>
-            <Text style={styles.debugTitle}>写真なしでテスト作成</Text>
-            <Text style={styles.debugDescription}>
-              写真機能の実装前に、タイトルとメモだけでノート保存を確認できます。
+        {/* ── Hero (写真未選択時のみ表示) ── */}
+        {!hasPhotos && (
+          <View style={styles.hero}>
+            <Text style={styles.heroEmoji}>📸</Text>
+            <Text style={styles.heroTitle}>写真を選んで{'\n'}思い出ノートを作ろう</Text>
+            <Text style={styles.heroDescription}>
+              写真を選ぶだけで、日付・場所・AIコメント付きの思い出ノートが自動で作れます
             </Text>
           </View>
+        )}
 
-          {/* フォーム */}
-          <View style={styles.debugForm}>
+        {/* ── 3ステップカード (写真未選択時のみ) ── */}
+        {!hasPhotos && (
+          <View style={styles.stepsSection}>
+            <Text style={styles.sectionLabel}>作成の流れ</Text>
+            <View style={styles.stepsCard}>
+              {CREATION_STEPS.map((item, index) => (
+                <View key={item.step}>
+                  <View style={styles.stepRow}>
+                    <View style={styles.stepNumberBadge}>
+                      <Text style={styles.stepNumberText}>{item.step}</Text>
+                    </View>
+                    <Text style={styles.stepEmoji}>{item.emoji}</Text>
+                    <View style={styles.stepContent}>
+                      <Text style={styles.stepTitle}>{item.title}</Text>
+                      <Text style={styles.stepDescription}>{item.description}</Text>
+                    </View>
+                  </View>
+                  {index < CREATION_STEPS.length - 1 && (
+                    <View style={styles.stepConnector} />
+                  )}
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {/* ── 選択済み写真サムネイル ── */}
+        {hasPhotos && (
+          <View style={styles.selectedPhotosSection}>
+            <View style={styles.photoCountRow}>
+              <View style={styles.photoCountChip}>
+                <Text style={styles.photoCountText}>📷 {photos.length}枚選択中</Text>
+              </View>
+            </View>
+            {/* height: 100 を明示して horizontal ScrollView が潰れないようにする */}
+            <View style={styles.thumbnailScrollContainer}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.thumbnailList}
+              >
+                {photos.map((photo) => (
+                  <View key={photo.id} style={styles.thumbnailWrapper}>
+                    <Image
+                      source={{ uri: photo.uri }}
+                      style={styles.thumbnail}
+                      resizeMode="cover"
+                    />
+                    <TouchableOpacity
+                      style={styles.removeButton}
+                      onPress={() => removePhoto(photo.id)}
+                      hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                    >
+                      <Text style={styles.removeButtonText}>×</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </ScrollView>
+            </View>
+          </View>
+        )}
+
+        {/* ── 写真選択ボタン ── */}
+        <View style={styles.photoButtonSection}>
+          <TouchableOpacity
+            style={[styles.photoButton, isPicking && styles.photoButtonLoading]}
+            onPress={pickPhotos}
+            disabled={isPicking}
+            activeOpacity={0.85}
+          >
+            {isPicking ? (
+              <ActivityIndicator color={colors.textInverse} size="small" />
+            ) : (
+              <Text style={styles.photoButtonText}>
+                {hasPhotos ? '📷　写真を追加する' : '📷　写真を選ぶ'}
+              </Text>
+            )}
+          </TouchableOpacity>
+          {!hasPhotos && !photoError && (
+            <Text style={styles.noPhotoHint}>写真を選ばずにタイトルだけでも保存できます</Text>
+          )}
+          {photoError ? (
+            <View style={styles.errorBox}>
+              <Text style={styles.errorText}>{photoError}</Text>
+            </View>
+          ) : null}
+        </View>
+
+        {/* ── ノート情報フォーム ── */}
+        <View style={styles.formSection}>
+          <Text style={styles.sectionLabel}>ノート情報</Text>
+          <View style={styles.formCard}>
             {/* タイトル */}
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>
@@ -184,24 +241,29 @@ export default function CreateScreen() {
                 <Text style={styles.errorText}>{error}</Text>
               </View>
             ) : null}
-
-            {/* 保存ボタン */}
-            <TouchableOpacity
-              style={[
-                styles.debugSaveButton,
-                (!title.trim() || isSaving) && styles.debugSaveButtonDisabled,
-              ]}
-              onPress={handleSave}
-              disabled={!title.trim() || isSaving}
-              activeOpacity={0.85}
-            >
-              {isSaving ? (
-                <ActivityIndicator color={colors.textInverse} size="small" />
-              ) : (
-                <Text style={styles.debugSaveButtonText}>写真なしでテスト作成する</Text>
-              )}
-            </TouchableOpacity>
           </View>
+        </View>
+
+        {/* ── 保存ボタン ── */}
+        <View style={styles.saveSection}>
+          <TouchableOpacity
+            style={[
+              styles.saveButton,
+              (!title.trim() || isSaving) && styles.saveButtonDisabled,
+            ]}
+            onPress={handleSave}
+            disabled={!title.trim() || isSaving}
+            activeOpacity={0.85}
+          >
+            {isSaving ? (
+              <ActivityIndicator color={colors.textInverse} size="small" />
+            ) : (
+              <Text style={styles.saveButtonText}>ノートを作成する</Text>
+            )}
+          </TouchableOpacity>
+          <Text style={styles.storageNote}>
+            写真の保存・アップロードは Phase 7 で対応予定です
+          </Text>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -342,76 +404,106 @@ const styles = StyleSheet.create({
     backgroundColor: colors.border,
     marginLeft: 27,
   },
-  // Photo button
-  photoSection: {
+  // Selected photos
+  selectedPhotosSection: {
+    paddingTop: 24,
+    paddingBottom: 8,
+    gap: 12,
+  },
+  photoCountRow: {
+    paddingHorizontal: 20,
+  },
+  photoCountChip: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.primaryLight,
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  photoCountText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  thumbnailScrollContainer: {
+    height: 100, // 88px thumbnail + 12px padding — prevents height collapse
+  },
+  thumbnailList: {
     paddingHorizontal: 20,
     gap: 10,
-    marginBottom: 8,
+    alignItems: 'center',
+  },
+  thumbnailWrapper: {
+    position: 'relative',
+    width: 88,
+    height: 88,
+  },
+  thumbnail: {
+    width: 88,
+    height: 88,
+    borderRadius: 10,
+    backgroundColor: colors.surfaceIvory,
+  },
+  removeButton: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  removeButtonText: {
+    color: colors.white,
+    fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 16,
+    marginTop: -1,
+  },
+  noPhotoHint: {
+    fontSize: 12,
+    color: colors.textTertiary,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  // Photo button
+  photoButtonSection: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 8,
+    gap: 10,
   },
   photoButton: {
     backgroundColor: colors.primary,
     borderRadius: 14,
     paddingVertical: 16,
     alignItems: 'center',
-    opacity: 0.35,
+  },
+  photoButtonLoading: {
+    opacity: 0.75,
   },
   photoButtonText: {
     color: colors.textInverse,
     fontSize: 17,
     fontWeight: '700',
   },
-  hintText: {
-    fontSize: 12,
-    color: colors.textTertiary,
-    textAlign: 'center',
-    lineHeight: 18,
+  // Form section
+  formSection: {
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    gap: 12,
   },
-  // Debug section
-  debugSection: {
-    marginHorizontal: 20,
-    marginTop: 24,
-    borderRadius: 16,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-    borderStyle: 'dashed',
-    overflow: 'hidden',
-  },
-  debugHeader: {
-    backgroundColor: colors.surfaceIvory,
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 14,
-    gap: 6,
-  },
-  debugBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: colors.border,
-    borderRadius: 20,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  debugBadgeText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: colors.textSecondary,
-    letterSpacing: 0.3,
-  },
-  debugTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  debugDescription: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    lineHeight: 19,
-  },
-  // Debug form
-  debugForm: {
+  formCard: {
     backgroundColor: colors.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
     paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 20,
+    paddingVertical: 16,
     gap: 16,
   },
   inputGroup: {
@@ -490,19 +582,32 @@ const styles = StyleSheet.create({
     color: colors.error,
     lineHeight: 20,
   },
-  // Debug save button
-  debugSaveButton: {
-    backgroundColor: colors.textSecondary,
-    borderRadius: 12,
-    paddingVertical: 14,
+  // Save section
+  saveSection: {
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    gap: 10,
     alignItems: 'center',
   },
-  debugSaveButtonDisabled: {
+  saveButton: {
+    backgroundColor: colors.primary,
+    borderRadius: 14,
+    paddingVertical: 16,
+    alignItems: 'center',
+    alignSelf: 'stretch',
+  },
+  saveButtonDisabled: {
     opacity: 0.4,
   },
-  debugSaveButtonText: {
+  saveButtonText: {
     color: colors.textInverse,
-    fontSize: 15,
+    fontSize: 17,
     fontWeight: '700',
+  },
+  storageNote: {
+    fontSize: 12,
+    color: colors.textTertiary,
+    textAlign: 'center',
+    lineHeight: 18,
   },
 });

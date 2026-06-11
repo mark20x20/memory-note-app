@@ -26,7 +26,13 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "思い出ノートを作成するために、写真ライブラリへのアクセスを使用します。"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

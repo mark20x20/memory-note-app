@@ -96,10 +96,10 @@ export default function NoteDetailScreen() {
       />
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        {/* Cover photo placeholder */}
+        {/* Cover photo — Phase 7 で実写真表示予定 */}
         <View style={styles.coverPhoto}>
           <Text style={styles.coverEmoji}>📷</Text>
-          <Text style={styles.coverPlaceholderText}>写真は Phase 6 以降で追加予定</Text>
+          <Text style={styles.coverPlaceholderText}>選択した写真の保存・表示は Phase 7 で対応予定です</Text>
         </View>
 
         {/* Note meta */}
@@ -140,17 +140,15 @@ export default function NoteDetailScreen() {
           <Text style={styles.placeholderCaption}>AI日記は Phase 9 以降で実装予定</Text>
         </View>
 
-        {/* Photo grid placeholder */}
+        {/* Photo section — Phase 7 で Storage アップロード・表示を実装予定 */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>写真</Text>
-          <View style={styles.photoGrid}>
-            {[1, 2, 3, 4, 5, 6].map((i) => (
-              <View key={i} style={styles.photoCell}>
-                <Text style={styles.photoCellEmoji}>🏞</Text>
-              </View>
-            ))}
+          <View style={styles.photoPlaceholderBox}>
+            <Text style={styles.photoPlaceholderEmoji}>📷</Text>
+            <Text style={styles.photoPlaceholderText}>
+              写真の保存・表示は Phase 7 で対応予定です
+            </Text>
           </View>
-          <Text style={styles.placeholderCaption}>写真表示は Phase 7 以降で実装予定</Text>
         </View>
 
         {/* Map placeholder */}
@@ -314,25 +312,24 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontStyle: 'italic',
   },
-  // Photo grid
-  photoGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginBottom: 8,
-  },
-  photoCell: {
-    width: '31%',
-    aspectRatio: 1,
+  // Photo placeholder (Phase 7 で実写真表示に置き換え予定)
+  photoPlaceholderBox: {
     backgroundColor: colors.surfaceIvory,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: colors.border,
+    paddingVertical: 28,
+    alignItems: 'center',
+    gap: 8,
   },
-  photoCellEmoji: {
-    fontSize: 24,
+  photoPlaceholderEmoji: {
+    fontSize: 32,
+    opacity: 0.4,
+  },
+  photoPlaceholderText: {
+    fontSize: 13,
+    color: colors.textTertiary,
+    textAlign: 'center',
   },
   // Map
   mapPlaceholder: {
