@@ -15,6 +15,8 @@ import { colors } from '@/shared/theme/colors';
 import { noteRepository } from '@/core/repositories/noteRepository';
 import type { NoteDoc } from '@/core/repositories/noteRepository';
 import { useNotePhotos } from '@/features/photos/hooks/useNotePhotos';
+import { MapPreview } from '@/features/map/components/MapPreview';
+import { getPhotoLocationsFromPhotos } from '@/features/map/utils/locationUtils';
 
 function formatDate(date: Date): string {
   return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
@@ -29,6 +31,7 @@ export default function NoteDetailScreen() {
 
   const { photos: notePhotos, isLoading: photosLoading } = useNotePhotos(noteId ?? null);
   const coverPhoto = notePhotos[0] ?? null;
+  const photoLocations = getPhotoLocationsFromPhotos(notePhotos);
 
   useEffect(() => {
     if (!noteId) {
@@ -185,14 +188,16 @@ export default function NoteDetailScreen() {
           )}
         </View>
 
-        {/* ── 地図プレースホルダー ── */}
+        {/* ── 地図セクション（Phase 8 実装） ── */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>地図</Text>
-          <View style={styles.mapPlaceholder}>
-            <Text style={styles.mapEmoji}>🗺</Text>
-            <Text style={styles.mapPlaceholderText}>訪れた場所がピンで表示されます</Text>
-          </View>
-          <Text style={styles.placeholderCaption}>地図表示は Phase 8 以降で実装予定</Text>
+          {photosLoading ? (
+            <View style={styles.mapLoadingBox}>
+              <Text style={styles.mapLoadingText}>位置情報を読み込み中...</Text>
+            </View>
+          ) : (
+            <MapPreview locations={photoLocations} height={180} />
+          )}
         </View>
 
         {/* ── メンバー ── */}
@@ -389,30 +394,25 @@ const styles = StyleSheet.create({
     color: colors.textTertiary,
     textAlign: 'center',
   },
-  // Map
-  mapPlaceholder: {
-    height: 140,
-    backgroundColor: colors.mapAccentLight,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginBottom: 8,
-  },
-  mapEmoji: {
-    fontSize: 36,
-    marginBottom: 8,
-  },
-  mapPlaceholderText: {
-    fontSize: 13,
-    color: colors.mapAccent,
-  },
   placeholderCaption: {
     fontSize: 11,
     color: colors.textTertiary,
     textAlign: 'center',
     marginTop: 4,
+  },
+  // Map (Phase 8)
+  mapLoadingBox: {
+    height: 180,
+    backgroundColor: colors.mapAccentLight,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mapLoadingText: {
+    fontSize: 13,
+    color: colors.mapAccent,
   },
   // Members
   membersRow: {
