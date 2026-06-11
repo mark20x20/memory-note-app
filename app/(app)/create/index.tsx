@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { router } from 'expo-router';
 import {
   View,
@@ -14,6 +15,8 @@ import { ScreenHeader } from '@/shared/components/ui';
 import { colors } from '@/shared/theme/colors';
 import { useCreateNote } from '@/features/memoryNotes/hooks/useCreateNote';
 import { usePhotoPicker } from '@/features/photos/hooks/usePhotoPicker';
+import { usePhotoUpload } from '@/features/photos/hooks/usePhotoUpload';
+import { noteRepository } from '@/core/repositories/noteRepository';
 import { useAuth } from '@/core/auth/AuthContext';
 
 const CREATION_STEPS = [
@@ -56,14 +59,52 @@ export default function CreateScreen() {
     removePhoto,
   } = usePhotoPicker();
 
+  const {
+    isUploading,
+    uploadProgress,
+    error: uploadError,
+    uploadPhotos,
+    resetUploadState,
+  } = usePhotoUpload();
+
+  /** ノート作成済みの場合のID（アップロード失敗時のリカバリ用） */
+  const [createdNoteId, setCreatedNoteId] = useState<string | null>(null);
+
   const hasPhotos = photos.length > 0;
+  const isProcessing = isSaving || isUploading;
 
   async function handleSave() {
     if (!uid) return;
+    resetUploadState();
+    setCreatedNoteId(null);
+
+    // Step 1: Firestore にノートを作成
     const noteId = await saveNote(uid);
-    if (noteId) {
-      router.replace(`/(app)/notes/${noteId}`);
+    if (!noteId) return; // saveNote が error をセット済み
+
+    setCreatedNoteId(noteId);
+
+    // Step 2: 写真があればアップロード
+    if (photos.length > 0) {
+      const uploaded = await uploadPhotos({ uid, noteId, photos });
+
+      if (uploaded && uploaded.length > 0) {
+        // Step 3: ノートに代表写真URLと枚数を保存（失敗しても続行）
+        try {
+          await noteRepository.updateCoverPhoto(noteId, {
+            coverPhotoURL: uploaded[0].downloadURL,
+            photoCount: uploaded.length,
+          });
+        } catch {
+          // 非クリティカル — Detail は表示できる
+        }
+      } else {
+        // アップロード失敗: エラーUI を表示し、ユーザーが手動でナビゲート
+        return;
+      }
     }
+
+    router.replace(`/(app)/notes/${noteId}`);
   }
 
   return (
@@ -78,7 +119,7 @@ export default function CreateScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* ── Hero (写真未選択時のみ表示) ── */}
+        {/* ── Hero (写真未選択時のみ) ── */}
         {!hasPhotos && (
           <View style={styles.hero}>
             <Text style={styles.heroEmoji}>📸</Text>
@@ -123,7 +164,6 @@ export default function CreateScreen() {
                 <Text style={styles.photoCountText}>📷 {photos.length}枚選択中</Text>
               </View>
             </View>
-            {/* height: 100 を明示して horizontal ScrollView が潰れないようにする */}
             <View style={styles.thumbnailScrollContainer}>
               <ScrollView
                 horizontal
@@ -156,7 +196,7 @@ export default function CreateScreen() {
           <TouchableOpacity
             style={[styles.photoButton, isPicking && styles.photoButtonLoading]}
             onPress={pickPhotos}
-            disabled={isPicking}
+            disabled={isPicking || isProcessing}
             activeOpacity={0.85}
           >
             {isPicking ? (
@@ -194,6 +234,7 @@ export default function CreateScreen() {
                 placeholderTextColor={colors.textTertiary}
                 maxLength={100}
                 returnKeyType="next"
+                editable={!isProcessing}
               />
             </View>
 
@@ -210,6 +251,7 @@ export default function CreateScreen() {
                 numberOfLines={4}
                 maxLength={1000}
                 textAlignVertical="top"
+                editable={!isProcessing}
               />
             </View>
 
@@ -223,6 +265,7 @@ export default function CreateScreen() {
                   desc="自分だけの記録"
                   active={noteType === 'personal'}
                   onPress={() => setNoteType('personal')}
+                  disabled={isProcessing}
                 />
                 <NoteTypeCard
                   emoji="🤝"
@@ -235,7 +278,7 @@ export default function CreateScreen() {
               </View>
             </View>
 
-            {/* エラー */}
+            {/* フォームエラー */}
             {error ? (
               <View style={styles.errorBox}>
                 <Text style={styles.errorText}>{error}</Text>
@@ -244,26 +287,65 @@ export default function CreateScreen() {
           </View>
         </View>
 
-        {/* ── 保存ボタン ── */}
+        {/* ── 保存 / アップロード進捗 ── */}
         <View style={styles.saveSection}>
-          <TouchableOpacity
-            style={[
-              styles.saveButton,
-              (!title.trim() || isSaving) && styles.saveButtonDisabled,
-            ]}
-            onPress={handleSave}
-            disabled={!title.trim() || isSaving}
-            activeOpacity={0.85}
-          >
-            {isSaving ? (
-              <ActivityIndicator color={colors.textInverse} size="small" />
-            ) : (
-              <Text style={styles.saveButtonText}>ノートを作成する</Text>
-            )}
-          </TouchableOpacity>
-          <Text style={styles.storageNote}>
-            写真の保存・アップロードは Phase 7 で対応予定です
-          </Text>
+          {isUploading ? (
+            /* アップロード中: 進捗バー表示 */
+            <View style={styles.uploadProgressSection}>
+              <Text style={styles.uploadProgressLabel}>
+                写真をアップロード中... {Math.round(uploadProgress)}%
+              </Text>
+              <View style={styles.progressBarTrack}>
+                <View
+                  style={[
+                    styles.progressBarFill,
+                    { width: `${Math.round(uploadProgress)}%` },
+                  ]}
+                />
+              </View>
+            </View>
+          ) : uploadError && createdNoteId ? (
+            /* アップロード失敗（ノートは作成済み） */
+            <View style={styles.uploadErrorSection}>
+              <View style={styles.errorBox}>
+                <Text style={styles.errorText}>
+                  ノートは作成済みですが、写真の保存に失敗しました。{'\n'}
+                  ノートページから確認してください。
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.saveButton}
+                onPress={() => router.replace(`/(app)/notes/${createdNoteId}`)}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.saveButtonText}>ノートを確認する</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            /* 通常: 保存ボタン */
+            <>
+              <TouchableOpacity
+                style={[
+                  styles.saveButton,
+                  (isProcessing || !title.trim()) && styles.saveButtonDisabled,
+                ]}
+                onPress={handleSave}
+                disabled={isProcessing || !title.trim()}
+                activeOpacity={0.85}
+              >
+                {isSaving ? (
+                  <ActivityIndicator color={colors.textInverse} size="small" />
+                ) : (
+                  <Text style={styles.saveButtonText}>ノートを作成する</Text>
+                )}
+              </TouchableOpacity>
+              <Text style={styles.saveNote}>
+                {hasPhotos
+                  ? `選択した${photos.length}枚の写真をノートに保存します`
+                  : 'タイトルのみでノートを作成します'}
+              </Text>
+            </>
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -428,7 +510,7 @@ const styles = StyleSheet.create({
     color: colors.primary,
   },
   thumbnailScrollContainer: {
-    height: 100, // 88px thumbnail + 12px padding — prevents height collapse
+    height: 100,
   },
   thumbnailList: {
     paddingHorizontal: 20,
@@ -464,12 +546,6 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     marginTop: -1,
   },
-  noPhotoHint: {
-    fontSize: 12,
-    color: colors.textTertiary,
-    textAlign: 'center',
-    lineHeight: 18,
-  },
   // Photo button
   photoButtonSection: {
     paddingHorizontal: 20,
@@ -491,7 +567,13 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '700',
   },
-  // Form section
+  noPhotoHint: {
+    fontSize: 12,
+    color: colors.textTertiary,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  // Form
   formSection: {
     paddingHorizontal: 20,
     paddingTop: 24,
@@ -532,7 +614,6 @@ const styles = StyleSheet.create({
     minHeight: 88,
     paddingTop: 11,
   },
-  // Note types
   noteTypesRow: {
     flexDirection: 'row',
     gap: 10,
@@ -604,10 +685,37 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '700',
   },
-  storageNote: {
+  saveNote: {
     fontSize: 12,
     color: colors.textTertiary,
     textAlign: 'center',
     lineHeight: 18,
+  },
+  // Upload progress
+  uploadProgressSection: {
+    alignSelf: 'stretch',
+    gap: 10,
+  },
+  uploadProgressLabel: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+  progressBarTrack: {
+    height: 6,
+    backgroundColor: colors.border,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: 6,
+    backgroundColor: colors.primary,
+    borderRadius: 3,
+  },
+  // Upload error (note created but photos failed)
+  uploadErrorSection: {
+    alignSelf: 'stretch',
+    gap: 12,
   },
 });

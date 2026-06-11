@@ -7,12 +7,14 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ScreenHeader } from '@/shared/components/ui';
 import { colors } from '@/shared/theme/colors';
 import { noteRepository } from '@/core/repositories/noteRepository';
 import type { NoteDoc } from '@/core/repositories/noteRepository';
+import { useNotePhotos } from '@/features/photos/hooks/useNotePhotos';
 
 function formatDate(date: Date): string {
   return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
@@ -24,6 +26,9 @@ export default function NoteDetailScreen() {
   const [note, setNote] = useState<NoteDoc | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+
+  const { photos: notePhotos, isLoading: photosLoading } = useNotePhotos(noteId ?? null);
+  const coverPhoto = notePhotos[0] ?? null;
 
   useEffect(() => {
     if (!noteId) {
@@ -96,13 +101,23 @@ export default function NoteDetailScreen() {
       />
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        {/* Cover photo — Phase 7 で実写真表示予定 */}
+        {/* ── カバー写真 ── */}
         <View style={styles.coverPhoto}>
-          <Text style={styles.coverEmoji}>📷</Text>
-          <Text style={styles.coverPlaceholderText}>選択した写真の保存・表示は Phase 7 で対応予定です</Text>
+          {coverPhoto ? (
+            <Image
+              source={{ uri: coverPhoto.downloadURL }}
+              style={styles.coverPhotoImage}
+              resizeMode="cover"
+            />
+          ) : (
+            <>
+              <Text style={styles.coverEmoji}>📷</Text>
+              <Text style={styles.coverPlaceholderText}>まだ写真がありません</Text>
+            </>
+          )}
         </View>
 
-        {/* Note meta */}
+        {/* ── ノートメタ情報 ── */}
         <View style={styles.metaSection}>
           <Text style={styles.noteTitle}>{note.title}</Text>
           <View style={styles.metaRow}>
@@ -116,10 +131,15 @@ export default function NoteDetailScreen() {
                 {note.noteType === 'shared' ? '🤝' : '👤'} {noteTypeLabel}
               </Text>
             </View>
+            {note.photoCount != null && note.photoCount > 0 ? (
+              <View style={styles.metaChip}>
+                <Text style={styles.metaChipText}>📷 {note.photoCount}枚</Text>
+              </View>
+            ) : null}
           </View>
         </View>
 
-        {/* Memo */}
+        {/* ── メモ ── */}
         {note.memo ? (
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>メモ</Text>
@@ -129,7 +149,7 @@ export default function NoteDetailScreen() {
           </View>
         ) : null}
 
-        {/* AI diary placeholder */}
+        {/* ── AI日記プレースホルダー ── */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>AI日記</Text>
           <View style={styles.diaryCard}>
@@ -140,18 +160,32 @@ export default function NoteDetailScreen() {
           <Text style={styles.placeholderCaption}>AI日記は Phase 9 以降で実装予定</Text>
         </View>
 
-        {/* Photo section — Phase 7 で Storage アップロード・表示を実装予定 */}
+        {/* ── 写真セクション ── */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>写真</Text>
-          <View style={styles.photoPlaceholderBox}>
-            <Text style={styles.photoPlaceholderEmoji}>📷</Text>
-            <Text style={styles.photoPlaceholderText}>
-              写真の保存・表示は Phase 7 で対応予定です
-            </Text>
-          </View>
+          {photosLoading ? (
+            <ActivityIndicator color={colors.primary} style={styles.photosLoader} />
+          ) : notePhotos.length > 0 ? (
+            <View style={styles.photoGrid}>
+              {notePhotos.map((photo) => (
+                <View key={photo.id} style={styles.photoGridItem}>
+                  <Image
+                    source={{ uri: photo.downloadURL }}
+                    style={styles.photoGridImage}
+                    resizeMode="cover"
+                  />
+                </View>
+              ))}
+            </View>
+          ) : (
+            <View style={styles.photoPlaceholderBox}>
+              <Text style={styles.photoPlaceholderEmoji}>📷</Text>
+              <Text style={styles.photoPlaceholderText}>まだ写真がありません</Text>
+            </View>
+          )}
         </View>
 
-        {/* Map placeholder */}
+        {/* ── 地図プレースホルダー ── */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>地図</Text>
           <View style={styles.mapPlaceholder}>
@@ -161,7 +195,7 @@ export default function NoteDetailScreen() {
           <Text style={styles.placeholderCaption}>地図表示は Phase 8 以降で実装予定</Text>
         </View>
 
-        {/* Members */}
+        {/* ── メンバー ── */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>メンバー</Text>
           <View style={styles.membersRow}>
@@ -172,7 +206,6 @@ export default function NoteDetailScreen() {
           </View>
         </View>
 
-        {/* Note ID */}
         <Text style={styles.noteIdHint}>ノートID: {note.id}</Text>
       </ScrollView>
     </SafeAreaView>
@@ -222,16 +255,22 @@ const styles = StyleSheet.create({
   },
   // Cover
   coverPhoto: {
-    height: 200,
+    height: 220,
     backgroundColor: colors.surfaceIvory,
     alignItems: 'center',
     justifyContent: 'center',
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+    overflow: 'hidden',
+  },
+  coverPhotoImage: {
+    width: '100%',
+    height: '100%',
   },
   coverEmoji: {
     fontSize: 48,
     marginBottom: 8,
+    opacity: 0.4,
   },
   coverPlaceholderText: {
     fontSize: 13,
@@ -312,7 +351,26 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontStyle: 'italic',
   },
-  // Photo placeholder (Phase 7 で実写真表示に置き換え予定)
+  // Photos
+  photosLoader: {
+    marginVertical: 20,
+  },
+  photoGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  photoGridItem: {
+    width: '31%',
+    aspectRatio: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: colors.surfaceIvory,
+  },
+  photoGridImage: {
+    width: '100%',
+    height: '100%',
+  },
   photoPlaceholderBox: {
     backgroundColor: colors.surfaceIvory,
     borderRadius: 14,
@@ -379,7 +437,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textSecondary,
   },
-  // Note ID hint
   noteIdHint: {
     marginTop: 32,
     marginHorizontal: 20,

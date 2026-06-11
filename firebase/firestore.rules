@@ -27,6 +27,26 @@ service cloud.firestore {
 
       allow delete: if request.auth != null
         && resource.data.ownerId == request.auth.uid;
+
+      // memory_notes/{noteId}/photos/{photoId}: Phase 7 — 写真メタデータ
+      // write: note owner のみ
+      // read:  note owner + members（members は get() で親ドキュメントを参照）
+      // delete: note owner のみ
+      match /photos/{photoId} {
+        allow create: if request.auth != null
+          && request.resource.data.ownerId == request.auth.uid;
+
+        allow read: if request.auth != null
+          && (resource.data.ownerId == request.auth.uid
+              || (get(/databases/$(database)/documents/memory_notes/$(noteId)).data.members != null
+                  && request.auth.uid in get(/databases/$(database)/documents/memory_notes/$(noteId)).data.members));
+
+        allow update: if request.auth != null
+          && resource.data.ownerId == request.auth.uid;
+
+        allow delete: if request.auth != null
+          && resource.data.ownerId == request.auth.uid;
+      }
     }
 
     // その他のコレクションは認証済みでも原則拒否

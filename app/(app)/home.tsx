@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@/shared/theme/colors';
@@ -113,9 +114,16 @@ function NoteCard({ note, onPress }: { note: NoteDoc; onPress: () => void }) {
 
   return (
     <TouchableOpacity style={styles.noteCard} onPress={onPress} activeOpacity={0.85}>
-      {/* カバー写真プレースホルダー — Phase 7 で Storage 実写真に置き換え予定 */}
       <View style={styles.noteCardCover}>
-        <Text style={styles.noteCardCoverEmoji}>📷</Text>
+        {note.coverPhotoURL ? (
+          <Image
+            source={{ uri: note.coverPhotoURL }}
+            style={styles.noteCardCoverImage}
+            resizeMode="cover"
+          />
+        ) : (
+          <Text style={styles.noteCardCoverEmoji}>📷</Text>
+        )}
       </View>
       {/* Content */}
       <View style={styles.noteCardContent}>
@@ -337,6 +345,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   noteCard: {
+    height: 152,
     backgroundColor: colors.surface,
     borderRadius: 16,
     borderWidth: 1,
@@ -345,10 +354,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
   },
   noteCardCover: {
-    width: 88,
+    width: 152,
+    height: '100%',
+    overflow: 'hidden',
     backgroundColor: colors.surfaceIvory,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  noteCardCoverImage: {
+    width: '100%',
+    height: '100%',
   },
   noteCardCoverEmoji: {
     fontSize: 28,
@@ -358,6 +373,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 14,
     gap: 6,
+    overflow: 'hidden',
   },
   noteCardTitle: {
     fontSize: 16,

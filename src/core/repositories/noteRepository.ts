@@ -4,6 +4,7 @@ import {
   addDoc,
   getDoc,
   getDocs,
+  updateDoc,
   query,
   where,
   serverTimestamp,
@@ -29,6 +30,10 @@ export interface NoteDoc {
   createdAt: Timestamp | null;
   updatedAt: Timestamp | null;
   members: Record<string, MemberRole>;
+  /** Phase 7: 代表写真URL（先頭写真のdownloadURL）*/
+  coverPhotoURL?: string | null;
+  /** Phase 7: 保存済み写真枚数 */
+  photoCount?: number;
 }
 
 export const noteRepository = {
@@ -67,5 +72,21 @@ export const noteRepository = {
     const snap = await getDoc(ref);
     if (!snap.exists()) return null;
     return { id: snap.id, ...snap.data() } as NoteDoc;
+  },
+
+  /**
+   * Phase 7: 写真アップロード完了後に代表写真URLと枚数をノートへ書き込む。
+   */
+  async updateCoverPhoto(
+    noteId: string,
+    params: { coverPhotoURL: string; photoCount: number }
+  ): Promise<void> {
+    if (!db) throw new Error('Firestore not configured');
+    const noteRef = doc(db, 'memory_notes', noteId);
+    await updateDoc(noteRef, {
+      coverPhotoURL: params.coverPhotoURL,
+      photoCount: params.photoCount,
+      updatedAt: serverTimestamp(),
+    });
   },
 };
