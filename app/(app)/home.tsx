@@ -1,12 +1,24 @@
 import { router } from 'expo-router';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  ActivityIndicator,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@/shared/theme/colors';
+import { useMemoryNotesList } from '@/features/memoryNotes/hooks/useMemoryNotesList';
+import type { NoteDoc } from '@/core/repositories/noteRepository';
 
-const PLACEHOLDER_NOTES: never[] = [];
+function formatDate(date: Date): string {
+  return `${date.getFullYear()}/${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')}`;
+}
 
 export default function HomeScreen() {
-  const isEmpty = PLACEHOLDER_NOTES.length === 0;
+  const { notes, isLoading, error } = useMemoryNotesList();
+  const isEmpty = notes.length === 0;
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -28,14 +40,25 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      {isEmpty ? (
+      {isLoading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>読み込み中...</Text>
+        </View>
+      ) : error ? (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorEmoji}>⚠️</Text>
+          <Text style={styles.errorText}>ノートの取得に失敗しました</Text>
+          <Text style={styles.errorDetail}>{error.message}</Text>
+        </View>
+      ) : isEmpty ? (
         <ScrollView contentContainerStyle={styles.emptyScroll} showsVerticalScrollIndicator={false}>
           {/* Empty state hero */}
           <View style={styles.emptyHero}>
             <Text style={styles.emptyEmoji}>📷</Text>
             <Text style={styles.emptyTitle}>まだノートがありません</Text>
             <Text style={styles.emptyDescription}>
-              写真を選ぶだけで、日付・場所・AIコメント付きの{'\n'}思い出ノートが自動で作れます
+              タイトルとメモを入力するだけで{'\n'}思い出ノートが作れます
             </Text>
             <TouchableOpacity
               style={styles.createButton}
@@ -50,39 +73,28 @@ export default function HomeScreen() {
           <View style={styles.hintsSection}>
             <Text style={styles.hintsSectionTitle}>できること</Text>
             <View style={styles.hintCard}>
-              <FeatureHint
-                emoji="🗺"
-                title="地図で振り返る"
-                description="訪れた場所がマップ上に並びます"
-              />
+              <FeatureHint emoji="🗺" title="地図で振り返る" description="訪れた場所がマップ上に並びます" />
               <HintDivider />
-              <FeatureHint
-                emoji="🤝"
-                title="一緒に作る"
-                description="家族や友人とノートを共有できます"
-              />
+              <FeatureHint emoji="🤝" title="一緒に作る" description="家族や友人とノートを共有できます" />
               <HintDivider />
-              <FeatureHint
-                emoji="📤"
-                title="SNSにシェア"
-                description="美しい共有カードで思い出を伝えます"
-              />
+              <FeatureHint emoji="📤" title="SNSにシェア" description="美しい共有カードで思い出を伝えます" />
             </View>
           </View>
         </ScrollView>
       ) : (
         <ScrollView contentContainerStyle={styles.listScroll} showsVerticalScrollIndicator={false}>
-          {/* Note list — Phase 5 以降で実装 */}
-          <View style={styles.listPlaceholder}>
-            <Text style={styles.listPlaceholderText}>
-              ノート一覧は Phase 5 以降で実装予定
-            </Text>
-          </View>
+          {notes.map((note) => (
+            <NoteCard
+              key={note.id}
+              note={note}
+              onPress={() => router.push(`/(app)/notes/${note.id}`)}
+            />
+          ))}
         </ScrollView>
       )}
 
-      {/* Floating create button */}
-      {!isEmpty && (
+      {/* FAB — only when notes exist */}
+      {!isEmpty && !isLoading && (
         <TouchableOpacity
           style={styles.fab}
           onPress={() => router.push('/(app)/create')}
@@ -93,6 +105,38 @@ export default function HomeScreen() {
         </TouchableOpacity>
       )}
     </SafeAreaView>
+  );
+}
+
+function NoteCard({ note, onPress }: { note: NoteDoc; onPress: () => void }) {
+  const dateStr = note.createdAt?.toDate ? formatDate(note.createdAt.toDate()) : null;
+
+  return (
+    <TouchableOpacity style={styles.noteCard} onPress={onPress} activeOpacity={0.85}>
+      {/* Cover placeholder */}
+      <View style={styles.noteCardCover}>
+        <Text style={styles.noteCardCoverEmoji}>📷</Text>
+      </View>
+      {/* Content */}
+      <View style={styles.noteCardContent}>
+        <Text style={styles.noteCardTitle} numberOfLines={2}>{note.title}</Text>
+        {note.memo ? (
+          <Text style={styles.noteCardMemo} numberOfLines={2}>{note.memo}</Text>
+        ) : null}
+        <View style={styles.noteCardChips}>
+          {dateStr ? (
+            <View style={styles.chip}>
+              <Text style={styles.chipText}>📅 {dateStr}</Text>
+            </View>
+          ) : null}
+          {note.noteType === 'shared' ? (
+            <View style={[styles.chip, styles.chipShared]}>
+              <Text style={[styles.chipText, styles.chipSharedText]}>🤝 共有</Text>
+            </View>
+          ) : null}
+        </View>
+      </View>
+    </TouchableOpacity>
   );
 }
 
@@ -154,6 +198,40 @@ const styles = StyleSheet.create({
   },
   iconButtonText: {
     fontSize: 18,
+  },
+  // Loading
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: colors.textTertiary,
+  },
+  // Error
+  errorContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    gap: 8,
+  },
+  errorEmoji: {
+    fontSize: 48,
+    marginBottom: 8,
+  },
+  errorText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    textAlign: 'center',
+  },
+  errorDetail: {
+    fontSize: 13,
+    color: colors.textTertiary,
+    textAlign: 'center',
   },
   // Empty state
   emptyScroll: {
@@ -251,20 +329,69 @@ const styles = StyleSheet.create({
     backgroundColor: colors.border,
     marginLeft: 66,
   },
-  // Note list (non-empty)
+  // Note list
   listScroll: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
     paddingBottom: 100,
+    gap: 12,
   },
-  listPlaceholder: {
-    flex: 1,
+  noteCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+    flexDirection: 'row',
+  },
+  noteCardCover: {
+    width: 88,
+    backgroundColor: colors.surfaceIvory,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 48,
   },
-  listPlaceholderText: {
-    fontSize: 14,
-    color: colors.textTertiary,
-    textAlign: 'center',
+  noteCardCoverEmoji: {
+    fontSize: 28,
+  },
+  noteCardContent: {
+    flex: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    gap: 6,
+  },
+  noteCardTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    lineHeight: 22,
+  },
+  noteCardMemo: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    lineHeight: 18,
+  },
+  noteCardChips: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 4,
+    flexWrap: 'wrap',
+  },
+  chip: {
+    backgroundColor: colors.surfaceIvory,
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  chipText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontWeight: '500',
+  },
+  chipShared: {
+    backgroundColor: colors.mapAccentLight,
+  },
+  chipSharedText: {
+    color: colors.mapAccent,
   },
   // FAB
   fab: {

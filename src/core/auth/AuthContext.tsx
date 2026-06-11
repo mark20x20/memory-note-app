@@ -57,7 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           updatedAt: data.updatedAt?.toDate?.()?.toISOString() ?? null,
         };
         setState({ status: 'signedIn', user: profile });
-      } catch (e) {
+      } catch {
         setState({
           status: 'needsProfileSetup',
           uid: firebaseUser.uid,
