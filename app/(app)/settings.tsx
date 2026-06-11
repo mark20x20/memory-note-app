@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/core/auth/AuthContext';
@@ -47,6 +48,8 @@ export default function SettingsScreen() {
     );
   };
 
+  const initials = displayName ? displayName.slice(0, 1).toUpperCase() : '?';
+
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <ScreenHeader
@@ -54,67 +57,104 @@ export default function SettingsScreen() {
         onBack={() => router.back()}
       />
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>アカウント</Text>
-        <View style={styles.card}>
-          <View style={styles.row}>
-            <Text style={styles.rowLabel}>表示名</Text>
-            <Text style={styles.rowValue}>{displayName || '未設定'}</Text>
-          </View>
-          <View style={styles.separator} />
-          <View style={styles.row}>
-            <Text style={styles.rowLabel}>メールアドレス</Text>
-            <Text style={styles.rowValue} numberOfLines={1}>{email || '未設定'}</Text>
-          </View>
-          <View style={styles.separator} />
-          <View style={styles.row}>
-            <Text style={styles.rowLabel}>プラン</Text>
-            <Text style={styles.rowValue}>{plan === 'pro' ? 'Pro' : '無料'}</Text>
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        {/* Profile card */}
+        <View style={styles.profileSection}>
+          <View style={styles.profileCard}>
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>{initials}</Text>
+            </View>
+            <View style={styles.profileInfo}>
+              <Text style={styles.profileName}>{displayName || '未設定'}</Text>
+              <Text style={styles.profileEmail} numberOfLines={1}>{email || '未設定'}</Text>
+            </View>
+            <View style={[styles.planBadge, plan === 'pro' && styles.planBadgePro]}>
+              <Text style={[styles.planBadgeText, plan === 'pro' && styles.planBadgeTextPro]}>
+                {plan === 'pro' ? 'Pro' : 'Free'}
+              </Text>
+            </View>
           </View>
         </View>
-      </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>サポート・情報</Text>
-        <View style={styles.card}>
-          <TouchableOpacity style={styles.row}>
-            <Text style={styles.rowLabel}>利用規約</Text>
-            <Text style={styles.rowArrow}>›</Text>
-          </TouchableOpacity>
-          <View style={styles.separator} />
-          <TouchableOpacity style={styles.row}>
-            <Text style={styles.rowLabel}>プライバシーポリシー</Text>
-            <Text style={styles.rowArrow}>›</Text>
-          </TouchableOpacity>
-          <View style={styles.separator} />
-          <TouchableOpacity style={styles.row}>
-            <Text style={styles.rowLabel}>お問い合わせ</Text>
-            <Text style={styles.rowArrow}>›</Text>
+        {/* Account section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>アカウント</Text>
+          <View style={styles.card}>
+            <SettingsRow label="表示名" value={displayName || '未設定'} />
+            <RowDivider />
+            <SettingsRow label="メールアドレス" value={email || '未設定'} truncate />
+            <RowDivider />
+            <SettingsRow label="プラン" value={plan === 'pro' ? 'Pro' : '無料'} />
+          </View>
+        </View>
+
+        {/* Privacy & permissions */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>プライバシー・権限</Text>
+          <View style={styles.card}>
+            <SettingsLinkRow label="写真・位置情報の権限" />
+            <RowDivider />
+            <SettingsLinkRow label="データとプライバシー" />
+            <RowDivider />
+            <SettingsLinkRow label="AIの利用について" />
+          </View>
+        </View>
+
+        {/* Support & legal */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>サポート・情報</Text>
+          <View style={styles.card}>
+            <SettingsLinkRow label="利用規約" />
+            <RowDivider />
+            <SettingsLinkRow label="プライバシーポリシー" />
+            <RowDivider />
+            <SettingsLinkRow label="お問い合わせ" />
+          </View>
+        </View>
+
+        {/* Logout */}
+        <View style={styles.section}>
+          <TouchableOpacity
+            style={[styles.logoutButton, isLoggingOut && styles.disabled]}
+            onPress={handleLogout}
+            disabled={isLoggingOut}
+          >
+            {isLoggingOut ? (
+              <ActivityIndicator color={colors.error} />
+            ) : (
+              <Text style={styles.logoutText}>ログアウト</Text>
+            )}
           </TouchableOpacity>
         </View>
-      </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionNote}>
-          ※ 設定詳細・権限説明・プライバシー管理は Phase 14 で実装予定
-        </Text>
-      </View>
-
-      <View style={styles.logoutSection}>
-        <TouchableOpacity
-          style={[styles.logoutButton, isLoggingOut && styles.disabled]}
-          onPress={handleLogout}
-          disabled={isLoggingOut}
-        >
-          {isLoggingOut ? (
-            <ActivityIndicator color={colors.error} />
-          ) : (
-            <Text style={styles.logoutText}>ログアウト</Text>
-          )}
-        </TouchableOpacity>
-      </View>
+        <Text style={styles.versionNote}>Memory Note v1.0 (Phase 4)</Text>
+      </ScrollView>
     </SafeAreaView>
   );
+}
+
+function SettingsRow({ label, value, truncate }: { label: string; value: string; truncate?: boolean }) {
+  return (
+    <View style={styles.row}>
+      <Text style={styles.rowLabel}>{label}</Text>
+      <Text style={styles.rowValue} numberOfLines={truncate ? 1 : undefined}>
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+function SettingsLinkRow({ label }: { label: string }) {
+  return (
+    <TouchableOpacity style={styles.row}>
+      <Text style={styles.rowLabel}>{label}</Text>
+      <Text style={styles.rowArrow}>›</Text>
+    </TouchableOpacity>
+  );
+}
+
+function RowDivider() {
+  return <View style={styles.separator} />;
 }
 
 const styles = StyleSheet.create({
@@ -122,6 +162,74 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+  scroll: {
+    paddingBottom: 40,
+  },
+  // Profile
+  profileSection: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 4,
+  },
+  profileCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  avatar: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+  },
+  avatarText: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  profileInfo: {
+    flex: 1,
+  },
+  profileName: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    marginBottom: 2,
+  },
+  profileEmail: {
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+  planBadge: {
+    backgroundColor: colors.surfaceIvory,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  planBadgePro: {
+    backgroundColor: colors.primaryLight,
+    borderColor: colors.primary,
+  },
+  planBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  planBadgeTextPro: {
+    color: colors.primary,
+  },
+  // Sections
   section: {
     marginTop: 24,
     paddingHorizontal: 20,
@@ -129,20 +237,16 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 13,
     fontWeight: '600',
-    color: colors.textSecondary,
-    marginBottom: 8,
+    color: colors.textTertiary,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-  },
-  sectionNote: {
-    fontSize: 12,
-    color: colors.textTertiary,
-    textAlign: 'center',
-    lineHeight: 18,
+    marginBottom: 8,
   },
   card: {
     backgroundColor: colors.surface,
-    borderRadius: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
     overflow: 'hidden',
   },
   row: {
@@ -164,20 +268,17 @@ const styles = StyleSheet.create({
   },
   rowArrow: {
     fontSize: 20,
-    color: colors.gray400,
+    color: colors.textTertiary,
   },
   separator: {
     height: 1,
     backgroundColor: colors.border,
     marginLeft: 16,
   },
-  logoutSection: {
-    marginTop: 32,
-    paddingHorizontal: 20,
-  },
+  // Logout
   logoutButton: {
     backgroundColor: colors.surface,
-    borderRadius: 12,
+    borderRadius: 14,
     paddingVertical: 14,
     alignItems: 'center',
     borderWidth: 1.5,
@@ -190,5 +291,11 @@ const styles = StyleSheet.create({
   },
   disabled: {
     opacity: 0.6,
+  },
+  versionNote: {
+    marginTop: 24,
+    fontSize: 12,
+    color: colors.textTertiary,
+    textAlign: 'center',
   },
 });

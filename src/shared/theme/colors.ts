@@ -1,22 +1,26 @@
 export const colors = {
-  // Brand
-  primary: '#4A90D9',
-  primaryDark: '#2E70B8',
-  primaryLight: '#E8F3FC',
+  // Brand — coral accent (memory note warm theme)
+  primary: '#F26B5B',
+  primaryDark: '#D4503F',
+  primaryLight: '#FEF0EE',
+
+  // Map / location accent — teal
+  mapAccent: '#4FA8A1',
+  mapAccentLight: '#E6F4F3',
 
   // Neutrals
   black: '#000000',
   white: '#FFFFFF',
-  gray50: '#F9FAFB',
-  gray100: '#F3F4F6',
-  gray200: '#E5E7EB',
-  gray300: '#D1D5DB',
-  gray400: '#9CA3AF',
-  gray500: '#6B7280',
-  gray600: '#4B5563',
-  gray700: '#374151',
-  gray800: '#1F2937',
-  gray900: '#1A1A1A',
+  gray50: '#FAF7F2',
+  gray100: '#F4EEE6',
+  gray200: '#E8DED4',
+  gray300: '#D9CDBF',
+  gray400: '#B8AD9F',
+  gray500: '#7A746D',
+  gray600: '#5A544D',
+  gray700: '#3E3A35',
+  gray800: '#2E2A27',
+  gray900: '#1C1915',
 
   // Semantic
   success: '#10B981',
@@ -25,20 +29,22 @@ export const colors = {
   info: '#3B82F6',
 
   // Background
-  background: '#F9FAFB',
+  background: '#FAF7F2',
   surface: '#FFFFFF',
+  surfaceWarm: '#FFF9F4',
+  surfaceIvory: '#F4EEE6',
   surfaceElevated: '#FFFFFF',
 
   // Text
-  textPrimary: '#1A1A1A',
-  textSecondary: '#6B7280',
-  textTertiary: '#9CA3AF',
-  textDisabled: '#D1D5DB',
+  textPrimary: '#2E2A27',
+  textSecondary: '#7A746D',
+  textTertiary: '#B8AD9F',
+  textDisabled: '#D9CDBF',
   textInverse: '#FFFFFF',
 
   // Border
-  border: '#E5E7EB',
-  borderFocus: '#4A90D9',
+  border: '#E8DED4',
+  borderFocus: '#F26B5B',
 } as const;
 
 export type ColorKey = keyof typeof colors;
