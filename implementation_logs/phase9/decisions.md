@@ -11,7 +11,7 @@
 
 ## D2: OpenAI API キーをモバイルに置かない
 
-**決定:** OpenAI API キーは Firebase Secret Manager（または Functions 環境変数）にのみ保管する。  
+**決定:** OpenAI API キーは Firebase Secret Manager（`defineSecret('OPENAI_API_KEY')`）にのみ保管する。  
 `.env`, `app.json`, ソースコードへの記載は禁止。
 
 **理由:**
@@ -30,11 +30,10 @@
 
 ## D4: AI 日記はまず memory_notes ドキュメント直下に保存する
 
-**決定:** `memory_notes/{noteId}` ドキュメントに `aiDiary`, `aiDiaryStatus`, `aiDiaryGeneratedAt` 等のフィールドを直接追加する。  
-サブコレクション（`ai_generation_runs`）は Phase 15 以降に検討する。
+**決定:** `memory_notes/{noteId}` ドキュメントに `aiDiary`, `aiDiaryStatus`, `aiDiaryGeneratedAt` 等のフィールドを直接追加する。
 
 **理由:**
-- モバイル側はすでに `memory_notes/{noteId}` を `onSnapshot` で監視している
+- モバイル側はすでに `memory_notes/{noteId}` を `onSnapshot` で監視している（Phase 9 で切り替え済み）
 - フィールドを追加するだけで既存の監視コードを再利用できる
 - サブコレクションを追加するとクエリコストが増加する
 
@@ -43,27 +42,55 @@
 **決定:** AI 日記生成の失敗は `aiDiaryStatus: 'failed'` として記録するのみ。  
 title / memo / photos / coverPhotoURL は一切変更しない。
 
-**理由:**
-- AI 日記はノートの「補助情報」であり、ノートの核（写真・タイトル・メモ・地図）ではない
-- 生成失敗によってノートが見られなくなる体験は最悪のユーザー体験
-- Cloud Functions のエラーは独立して処理し、ノート本体データに影響させない
+**実装:**
+- Functions の `try-catch` で失敗を捕捉
+- `aiDiaryStatus: 'failed'`, `aiDiaryError` を Firestore に書き込む
+- モバイル側の `AiDiarySection` のみがエラー UI を表示
+- 写真・地図・メモセクションには影響なし
 
 ## D6: Rate limit の本格実装は必要に応じて後続フェーズへ
 
 **決定:** Phase 9 では「同じノートの `generating` 中は重複呼び出しを拒否する」最低限の制御のみ実装する。  
 1日あたりの生成回数制限・ユーザーごとの上限・課金プラン連動は Phase 15 以降に実装する。
 
-**理由:**
-- gpt-4o-mini のコストは Phase 9 時点では無視できる水準（1万回で $1 程度）
-- 本格的な Rate limit 実装は Firebase Analytics との連動が必要（Phase 15 の成果物）
-- Phase 9 は機能の実現が優先
+**実装:**
+```typescript
+if (currentStatus === 'generating') {
+  throw new HttpsError('already-exists', 'AI生成が進行中です');
+}
+```
 
-## D7: Callable Functions を採用（HTTP Functions ではなく）
+## D7: Callable Functions v2 を採用（HTTP Functions ではなく）
 
 **決定:** Cloud Functions v2 の `onCall`（Callable Function）を採用する。
 
+**実装:**
+```typescript
+import { onCall, HttpsError } from 'firebase-functions/v2/https';
+import { defineSecret } from 'firebase-functions/params';
+```
+
 **理由:**
-- `context.auth` で Firebase Auth の認証チェックが自動化される
+- `request.auth` で Firebase Auth の認証チェックが自動化される
 - `HttpsError` による構造化エラー返却でモバイル側のエラーハンドリングが簡潔になる
 - CORS 設定が不要
-- Firebase JS SDK の `httpsCallable()` と相性が良い
+- `defineSecret` と組み合わせて Secret Manager を安全に使える
+
+## D8: useNoteDetail で onSnapshot に切り替え
+
+**決定:** `[noteId].tsx` のノート取得を `getNoteById`（1回取得）から `useNoteDetail`（onSnapshot）に切り替えた。
+
+**理由:**
+- AI 生成中に `aiDiaryStatus` が `'generating'` → `'completed'` / `'failed'` に変化するが、
+  1回取得ではこの変化をモバイル側に即時反映できない
+- `onSnapshot` を使うことで、Cloud Functions が Firestore を更新した瞬間に UI が自動更新される
+- 別端末で生成を開始した場合も同じノートを開いていれば自動反映される
+
+## D9: AiDiarySection を独立コンポーネントにする
+
+**決定:** AI日記 UI を `AiDiarySection.tsx` として独立したコンポーネントに切り出す。
+
+**理由:**
+- AI日記の状態管理（idle/generating/completed/failed）を Detail 画面本体から隔離する
+- 生成失敗が他のセクション（写真・地図・メモ）の表示に影響しない
+- Phase 10 で編集機能を追加する際に `AiDiarySection` の変更だけで対応できる

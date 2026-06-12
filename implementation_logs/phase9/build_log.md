@@ -1,41 +1,71 @@
 # Phase 9 Build Log — AI Generation via Cloud Functions
 
 **Date:** 2026-06-12
-**Status:** Planning only
+**Status:** Completed (deploy pending)
 
-## 概要
+## 作業内容
 
-Phase 9 は AI 日記生成機能の実装フェーズ。  
-本ログは **Planning docs 作成のみ** を記録する。  
-コード実装・Firebase 変更・パッケージ変更は一切行っていない。
+### 新規作成ファイル
 
-## 作成した Planning Docs
-
-| ファイル | 内容 |
+| ファイル | 概要 |
 |---|---|
-| `docs/phase9_ai_generation/01_ai_generation_overview.md` | Phase 9 の目的・背景・入出力・ゴール・非ゴール |
-| `docs/phase9_ai_generation/02_cloud_functions_api_design.md` | generateMemoryDiary 関数の設計・Request/Response 型・認証・エラーコード・deploy 方針 |
-| `docs/phase9_ai_generation/03_openai_prompt_design.md` | System Prompt / User Prompt 案・DiaryContext 型・ハルシネーション防止・生成例 |
-| `docs/phase9_ai_generation/04_security_cost_policy.md` | APIキー管理・Secret Manager・コスト制御・ログ方針・個人情報の取り扱い |
-| `docs/phase9_ai_generation/05_firestore_data_model.md` | aiDiary フィールド設計・NoteDoc 型更新案・ステータス遷移・後方互換性 |
-| `docs/phase9_ai_generation/06_ui_flow.md` | Detail 画面 AI 日記セクションの4状態 UI・コンポーネント構成案 |
+| `firebase/functions/package.json` | Functions 依存関係定義（firebase-admin / firebase-functions / openai / typescript） |
+| `firebase/functions/tsconfig.json` | Functions TypeScript コンパイル設定（target: es2017, module: commonjs） |
+| `firebase/functions/.gitignore` | lib/ と node_modules/ を除外 |
+| `src/core/repositories/aiDiaryRepository.ts` | httpsCallable で generateMemoryDiary を呼び出すリポジトリ |
+| `src/features/memoryNotes/hooks/useNoteDetail.ts` | memory_notes/{noteId} を onSnapshot でリアルタイム購読するフック |
+| `src/features/memoryNotes/hooks/useGenerateDiary.ts` | AI日記生成フック（isGenerating / error 管理） |
+| `src/features/memoryNotes/components/AiDiarySection.tsx` | 4状態 UI コンポーネント（idle / generating / completed / failed） |
 | `implementation_logs/phase9/build_log.md` | このファイル |
 | `implementation_logs/phase9/decisions.md` | 設計決定記録 |
 | `implementation_logs/phase9/issues.md` | 既知の問題・リスク |
-| `implementation_logs/phase9/next_steps.md` | 実装着手前の確認事項と実装ステップ |
+| `implementation_logs/phase9/next_steps.md` | 実装ステップと次フェーズへの引き継ぎ |
 
-## コード変更
+### 変更ファイル
 
-**なし。** Planning docs のみ。
+| ファイル | 変更内容 |
+|---|---|
+| `firebase/functions/src/index.ts` | generateMemoryDiary Callable Function 実装（スタブから本実装へ） |
+| `firebase.json` | functions.source を追加 |
+| `src/core/repositories/noteRepository.ts` | NoteDoc に aiDiary* フィールドを optional 追加 |
+| `app/(app)/notes/[noteId].tsx` | useNoteDetail に切り替え、AiDiarySection を統合 |
+| `generated_ui/figma_make/reference_map.md` | Phase 9 ステータス更新 |
 
-## Firebase 変更
+### インストールパッケージ（Functions 側）
 
-**なし。** Firestore Rules / Storage Rules / Functions コード は変更していない。
+`firebase/functions/` でユーザーが `npm install` を実行する必要がある:
+- `firebase-admin@^13.0.0`
+- `firebase-functions@^6.0.0`
+- `openai@^4.0.0`
+- `typescript@~5.9.0`（devDependencies）
+- `@types/node@^20.0.0`（devDependencies）
 
-## パッケージ変更
+### インストールパッケージ（モバイル側）
 
-**なし。** `package.json` / `package-lock.json` は変更していない。
+なし（httpsCallable は firebase/functions から使用。既存パッケージで対応）
 
-## 次のアクション
+## 実装内容詳細
 
-Phase 9 実装前の確認事項については `implementation_logs/phase9/next_steps.md` を参照。
+### firebase/functions/src/index.ts
+
+- `onCall` (Firebase Functions v2) で `generateMemoryDiary` を実装
+- `defineSecret('OPENAI_API_KEY')` で Secret Manager から APIキーを参照
+- 認証チェック → noteId バリデーション → Firestore 取得 → 権限確認 → 重複生成拒否 → 生成 → 保存
+- 写真メタデータのみを AI に渡す（画像は送らない）
+- 生成失敗時も `aiDiaryStatus: 'failed'` を保存してノート閲覧を妨げない
+- モデル: gpt-4o-mini / max_tokens: 300 / temperature: 0.7
+
+### モバイル側の変更
+
+- `useNoteDetail`: `getNoteById`（1回取得）→ `onSnapshot`（リアルタイム購読）へ切り替え
+- `AiDiarySection`: 4状態に応じた UI を独立コンポーネント化
+- `[noteId].tsx`: `useEffect` / `useState` によるノート読み込みを `useNoteDetail` に置き換え
+
+## 確認コマンド結果
+
+```
+npx tsc --noEmit    → 通過（エラーなし）
+npx expo lint       → 通過（エラーなし）
+cd firebase/functions && npm install → ユーザー実行待ち（npm がエージェント環境では利用不可）
+cd firebase/functions && npm run build → ユーザー実行待ち
+```

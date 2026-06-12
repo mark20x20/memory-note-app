@@ -34,6 +34,18 @@ export interface NoteDoc {
   coverPhotoURL?: string | null;
   /** Phase 7: 保存済み写真枚数 */
   photoCount?: number;
+
+  // Phase 9: AI Diary — すべて optional（既存ノートとの後方互換性を保つ）
+  /** AI生成した短文日記テキスト */
+  aiDiary?: string | null;
+  /** AI生成ステータス。フィールドなし / null は 'idle' と同等 */
+  aiDiaryStatus?: 'idle' | 'generating' | 'completed' | 'failed';
+  /** 最後に生成成功した日時 */
+  aiDiaryGeneratedAt?: Timestamp | null;
+  /** ステータスが更新された日時 */
+  aiDiaryUpdatedAt?: Timestamp | null;
+  /** 生成失敗時のユーザー向けエラーメッセージ */
+  aiDiaryError?: string | null;
 }
 
 export const noteRepository = {

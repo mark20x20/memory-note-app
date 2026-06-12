@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import {
   View,
@@ -12,11 +11,11 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ScreenHeader } from '@/shared/components/ui';
 import { colors } from '@/shared/theme/colors';
-import { noteRepository } from '@/core/repositories/noteRepository';
-import type { NoteDoc } from '@/core/repositories/noteRepository';
+import { useNoteDetail } from '@/features/memoryNotes/hooks/useNoteDetail';
 import { useNotePhotos } from '@/features/photos/hooks/useNotePhotos';
 import { MapPreview } from '@/features/map/components/MapPreview';
 import { getPhotoLocationsFromPhotos } from '@/features/map/utils/locationUtils';
+import { AiDiarySection } from '@/features/memoryNotes/components/AiDiarySection';
 
 function formatDate(date: Date): string {
   return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
@@ -25,31 +24,12 @@ function formatDate(date: Date): string {
 export default function NoteDetailScreen() {
   const { noteId } = useLocalSearchParams<{ noteId: string }>();
 
-  const [note, setNote] = useState<NoteDoc | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
+  // Phase 9: onSnapshot でリアルタイム購読（aiDiaryStatus の変化を自動反映）
+  const { note, isLoading, error } = useNoteDetail(noteId ?? null);
 
   const { photos: notePhotos, isLoading: photosLoading } = useNotePhotos(noteId ?? null);
   const coverPhoto = notePhotos[0] ?? null;
   const photoLocations = getPhotoLocationsFromPhotos(notePhotos);
-
-  useEffect(() => {
-    if (!noteId) {
-      setIsLoading(false);
-      return;
-    }
-    async function load() {
-      try {
-        const data = await noteRepository.getNoteById(noteId);
-        setNote(data);
-      } catch (e) {
-        setError(e as Error);
-      } finally {
-        setIsLoading(false);
-      }
-    }
-    load();
-  }, [noteId]);
 
   if (isLoading) {
     return (
@@ -152,15 +132,10 @@ export default function NoteDetailScreen() {
           </View>
         ) : null}
 
-        {/* ── AI日記プレースホルダー ── */}
+        {/* ── AI日記セクション（Phase 9 実装） ── */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>AI日記</Text>
-          <View style={styles.diaryCard}>
-            <Text style={styles.diaryPlaceholder}>
-              AIが生成した短文日記がここに表示されます。{'\n'}写真・場所・日付から自動で作られます。
-            </Text>
-          </View>
-          <Text style={styles.placeholderCaption}>AI日記は Phase 9 以降で実装予定</Text>
+          <AiDiarySection noteId={noteId} note={note} />
         </View>
 
         {/* ── 写真セクション ── */}
@@ -341,21 +316,6 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     lineHeight: 24,
   },
-  // Diary
-  diaryCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 16,
-  },
-  diaryPlaceholder: {
-    fontSize: 14,
-    color: colors.textTertiary,
-    lineHeight: 22,
-    textAlign: 'center',
-    fontStyle: 'italic',
-  },
   // Photos
   photosLoader: {
     marginVertical: 20,
@@ -393,12 +353,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.textTertiary,
     textAlign: 'center',
-  },
-  placeholderCaption: {
-    fontSize: 11,
-    color: colors.textTertiary,
-    textAlign: 'center',
-    marginTop: 4,
   },
   // Map (Phase 8)
   mapLoadingBox: {
