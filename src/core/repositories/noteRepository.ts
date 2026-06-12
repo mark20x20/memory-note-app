@@ -5,6 +5,7 @@ import {
   getDoc,
   getDocs,
   updateDoc,
+  deleteDoc,
   query,
   where,
   serverTimestamp,
@@ -19,6 +20,15 @@ export interface NoteInput {
   title: string;
   memo: string;
   noteType: NoteType;
+}
+
+// Phase 10: ノート編集入力
+export interface NoteUpdateInput {
+  title: string;
+  memo: string;
+  noteType: NoteType;
+  /** undefined = AI日記を変更しない。string（空文字含む）= 値を更新してステータスを 'edited' にする */
+  aiDiary?: string;
 }
 
 export interface NoteDoc {
@@ -39,7 +49,7 @@ export interface NoteDoc {
   /** AI生成した短文日記テキスト */
   aiDiary?: string | null;
   /** AI生成ステータス。フィールドなし / null は 'idle' と同等 */
-  aiDiaryStatus?: 'idle' | 'generating' | 'completed' | 'failed';
+  aiDiaryStatus?: 'idle' | 'generating' | 'completed' | 'failed' | 'edited';
   /** 最後に生成成功した日時 */
   aiDiaryGeneratedAt?: Timestamp | null;
   /** ステータスが更新された日時 */
@@ -84,6 +94,37 @@ export const noteRepository = {
     const snap = await getDoc(ref);
     if (!snap.exists()) return null;
     return { id: snap.id, ...snap.data() } as NoteDoc;
+  },
+
+  /**
+   * Phase 10: ノートのタイトル・メモ・種別・AI日記を更新する。
+   * ownerId / members / coverPhotoURL / photoCount は変更しない。
+   */
+  async updateNote(noteId: string, input: NoteUpdateInput): Promise<void> {
+    if (!db) throw new Error('Firestore not configured');
+    const noteRef = doc(db, 'memory_notes', noteId);
+    const updateData: Record<string, unknown> = {
+      title: input.title.trim(),
+      memo: input.memo.trim(),
+      noteType: input.noteType,
+      updatedAt: serverTimestamp(),
+    };
+    if (input.aiDiary !== undefined) {
+      updateData.aiDiary = input.aiDiary;
+      updateData.aiDiaryStatus = 'edited';
+      updateData.aiDiaryUpdatedAt = serverTimestamp();
+    }
+    await updateDoc(noteRef, updateData);
+  },
+
+  /**
+   * Phase 10: ノートドキュメントを Firestore から削除する。
+   * Storage・photos サブコレクションは photoRepository.deletePhotosForNote で先に削除する。
+   */
+  async deleteNote(noteId: string): Promise<void> {
+    if (!db) throw new Error('Firestore not configured');
+    const noteRef = doc(db, 'memory_notes', noteId);
+    await deleteDoc(noteRef);
   },
 
   /**

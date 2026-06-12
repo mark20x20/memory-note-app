@@ -51,8 +51,8 @@ export function AiDiarySection({ noteId, note }: Props) {
     );
   }
 
-  // ── 生成成功 ───────────────────────────────────────────────────────────────
-  if (status === 'completed' && note.aiDiary) {
+  // ── 生成成功 / 手動編集済み ────────────────────────────────────────────────────
+  if ((status === 'completed' || status === 'edited') && note.aiDiary) {
     const dateStr = formatTimestamp(note.aiDiaryGeneratedAt ?? null);
     return (
       <View>

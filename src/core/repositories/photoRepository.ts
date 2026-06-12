@@ -7,8 +7,10 @@ import {
   orderBy,
   serverTimestamp,
   Timestamp,
+  deleteDoc,
+  doc,
 } from 'firebase/firestore';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import { db, storage } from '@/core/firebase/client';
 import type { PickedPhoto } from '@/features/photos/types';
 
@@ -191,6 +193,49 @@ export const photoRepository = {
     const q = query(colRef, orderBy('sortOrder', 'asc'));
     const snap = await getDocs(q);
     return snap.docs.map((d) => ({ id: d.id, ...d.data() } as PhotoDoc));
+  },
+
+  /**
+   * Phase 10: ノートに紐づく写真を Storage と Firestore から全件削除する。
+   * Storage 削除が部分的に失敗した場合もエラーをまとめてスローする。
+   * Firestore の photos サブコレクションは Storage 削除後に削除する。
+   */
+  async deletePhotosForNote(noteId: string): Promise<void> {
+    if (!db || !storage) throw new Error('Firebase not configured');
+
+    const colRef = collection(db, 'memory_notes', noteId, 'photos');
+    const snap = await getDocs(colRef);
+    if (snap.empty) return;
+
+    const storageErrors: string[] = [];
+
+    // 1. Storage ファイルを削除
+    await Promise.all(
+      snap.docs.map(async (d) => {
+        const storagePath = (d.data() as PhotoDoc).storagePath;
+        if (!storagePath) return;
+        try {
+          await deleteObject(ref(storage!, storagePath));
+        } catch (e) {
+          // Storage に存在しないファイルは無視（already deleted など）
+          const code = (e as { code?: string }).code;
+          if (code !== 'storage/object-not-found') {
+            storageErrors.push(storagePath);
+          }
+        }
+      })
+    );
+
+    // 2. Firestore の photo ドキュメントを削除
+    await Promise.all(
+      snap.docs.map((d) => deleteDoc(doc(db!, 'memory_notes', noteId, 'photos', d.id)))
+    );
+
+    if (storageErrors.length > 0) {
+      throw new Error(
+        `Storage から削除できなかったファイルがあります: ${storageErrors.join(', ')}`
+      );
+    }
   },
 
   /**

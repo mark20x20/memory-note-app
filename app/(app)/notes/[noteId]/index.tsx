@@ -77,8 +77,14 @@ export default function NoteDetailScreen() {
         title="ノート詳細"
         onBack={() => router.back()}
         rightElement={
-          <TouchableOpacity style={styles.shareButton} hitSlop={8}>
-            <Text style={styles.shareButtonText}>↗</Text>
+          // Phase 10: 編集画面へ遷移するボタン
+          <TouchableOpacity
+            style={styles.editButton}
+            onPress={() => router.push(`/(app)/notes/${noteId}/edit`)}
+            hitSlop={8}
+            accessibilityLabel="編集"
+          >
+            <Text style={styles.editButtonText}>編集</Text>
           </TouchableOpacity>
         }
       />
@@ -226,11 +232,13 @@ const styles = StyleSheet.create({
   scroll: {
     paddingBottom: 48,
   },
-  shareButton: {
-    padding: 4,
+  editButton: {
+    paddingHorizontal: 4,
+    paddingVertical: 2,
   },
-  shareButtonText: {
-    fontSize: 20,
+  editButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
     color: colors.primary,
   },
   // Cover
