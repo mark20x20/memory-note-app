@@ -1,8 +1,10 @@
-// Phase 9: AI Diary Generation via Cloud Functions
+// Phase 9:  AI Diary Generation via Cloud Functions
 // Phase 11: Member Management via Cloud Functions
+// Phase 12.5C: Place Intelligence via Cloud Functions
 //
 // セキュリティ方針:
 // - OpenAI APIキーは Secret Manager で管理 (OPENAI_API_KEY) — generateMemoryDiary のみ使用
+// - GOOGLE_PLACES_API_KEY は Secret Manager で管理 — place Functions のみ使用
 // - 写真画像は送らない。メタデータのみ使用
 // - メンバー管理は Firestore Admin SDK で行い、クライアントから直接 members を変更させない
 // - ログに個人情報・APIキーを出力しない
@@ -441,6 +443,15 @@ export const updateNoteMemberRole = onCall(
 );
 
 // ── Phase 11: removeNoteMember ────────────────────────────────────────────────
+
+// ── Phase 12.5C: Place Intelligence Functions ─────────────────────────────────
+export {
+  enrichNotePlaces,
+  getPlaceCandidatesForGroup,
+  refreshPlaceCandidates,
+  selectPlaceCandidate,
+  updatePlaceGroupManually,
+} from './place/placeFunctions';
 
 export const removeNoteMember = onCall(
   { region: 'asia-northeast1' },
