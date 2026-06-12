@@ -17,8 +17,20 @@ import {
   groupNearbyLocations,
   haversineDistance,
   isCacheValid,
+  isFoodRelatedNote,
 } from './placeUtils';
-import type { PhotoData, PlaceCategory, PlaceGroupSource, PlaceGroupDoc } from './types';
+import type { GooglePlace, PhotoData, PlaceCategory, PlaceGroupSource, PlaceGroupDoc } from './types';
+
+// ── 定数 ─────────────────────────────────────────────────────────────────────
+
+/** 1 PlaceGroup に保存する候補の最大件数 */
+const MAX_SAVED_CANDIDATES = 20;
+
+/**
+ * 飲食系検索に使用する includedTypes。
+ * 将来候補: bar, bakery, meal_takeaway など（API サポート状況を確認してから追加）
+ */
+const FOOD_INCLUDED_TYPES = ['restaurant', 'cafe'];
 
 // ── Secret Manager ────────────────────────────────────────────────────────────
 
@@ -84,11 +96,69 @@ async function recalculateVisitedPlacesSummary(
   });
 }
 
+// ── 検索ヘルパー ──────────────────────────────────────────────────────────────
+
+/**
+ * providerPlaceId（place.id）で重複排除して結合する。
+ * primary が優先される（先に追加されるため）。
+ */
+function mergeDedupe(primary: GooglePlace[], secondary: GooglePlace[]): GooglePlace[] {
+  const seen = new Set<string>();
+  const result: GooglePlace[] = [];
+  for (const p of [...primary, ...secondary]) {
+    const key = p.id ?? '';
+    if (key && seen.has(key)) continue;
+    if (key) seen.add(key);
+    result.push(p);
+  }
+  return result;
+}
+
+/**
+ * 1 PlaceGroup の Nearby Search を実行し、重複排除済み GooglePlace 配列を返す。
+ *
+ * food-related の場合:
+ *   1. restaurant/cafe に絞った Nearby Search（200m）
+ *   2. general Nearby Search（200m）
+ *   3. providerPlaceId で重複排除して統合
+ *   [COST NOTE] 2 API calls / PlaceGroup（最大 5 グループ × 2 = 最大 10 calls / note）
+ *
+ * food-related でない場合:
+ *   1. general Nearby Search（200m）
+ *   2. 0件なら 500m で再試行
+ *
+ * どちらの場合も 0件なら general 500m fallback を実行する。
+ */
+async function searchPlacesForGroup(
+  apiKey: string,
+  lat: number,
+  lng: number,
+  isFoodRelated: boolean
+): Promise<GooglePlace[]> {
+  if (isFoodRelated) {
+    const [foodPlaces, generalPlaces] = await Promise.all([
+      searchNearbyPlaces(apiKey, lat, lng, 200, FOOD_INCLUDED_TYPES),
+      searchNearbyPlaces(apiKey, lat, lng, 200),
+    ]);
+    const merged = mergeDedupe(foodPlaces, generalPlaces);
+    if (merged.length > 0) return merged;
+    // food + general どちらも 0件 → 500m general fallback
+    return searchNearbyPlaces(apiKey, lat, lng, 500);
+  } else {
+    let places = await searchNearbyPlaces(apiKey, lat, lng, 200);
+    if (places.length === 0) {
+      places = await searchNearbyPlaces(apiKey, lat, lng, 500);
+    }
+    return places;
+  }
+}
+
 /**
  * 1グループの候補を Places API から取得して candidates サブコレクションに保存する。
- * - 半径 200m で検索。0件なら 500m で再試行。
+ * - isFoodRelated=true の場合: restaurant/cafe Nearby + general Nearby を統合（最大2コール）
+ * - isFoodRelated=false の場合: general Nearby のみ（0件なら500mで再試行）
  * - 既存 candidates を削除してから保存する（forceRefresh 相当）。
- * - 候補は confidence 降順でソートして上位10件保存する。
+ * - 候補は distanceMeters 昇順でソートして最大 MAX_SAVED_CANDIDATES 件保存する。
  */
 async function fetchAndSaveCandidates(
   db: admin.firestore.Firestore,
@@ -96,13 +166,11 @@ async function fetchAndSaveCandidates(
   noteId: string,
   placeGroupId: string,
   groupLat: number,
-  groupLng: number
+  groupLng: number,
+  isFoodRelated = false
 ): Promise<Array<{ id: string; name: string; category: string; distanceMeters: number; confidence: number }>> {
-  // Google Places API 呼び出し (200m, 0件なら500mで再試行)
-  let places = await searchNearbyPlaces(apiKey, groupLat, groupLng, 200);
-  if (places.length === 0) {
-    places = await searchNearbyPlaces(apiKey, groupLat, groupLng, 500);
-  }
+  // Places API 呼び出し（food-related なら food+general の2コール、それ以外は1コール）
+  const places = await searchPlacesForGroup(apiKey, groupLat, groupLng, isFoodRelated);
 
   if (places.length === 0) {
     return [];
@@ -119,15 +187,12 @@ async function fetchAndSaveCandidates(
     return { place, distMeters, confidence };
   });
 
-  // distanceMeters 昇順ソート → 上位10件
-  // confidence は表示用の参考値として残すが、ソートには使わない（距離が同じ場合のみ tie-breaker）
+  // distanceMeters 昇順ソート。confidence は tie-breaker のみ
   scored.sort((a, b) => {
-    const dA = a.distMeters;
-    const dB = b.distMeters;
-    if (dA !== dB) return dA - dB;
+    if (a.distMeters !== b.distMeters) return a.distMeters - b.distMeters;
     return b.confidence - a.confidence;
   });
-  const top5 = scored.slice(0, 10);
+  const topCandidates = scored.slice(0, MAX_SAVED_CANDIDATES);
 
   // 既存 candidates を削除
   const candidatesRef = db.collection(
@@ -138,7 +203,7 @@ async function fetchAndSaveCandidates(
 
   // Firestore に保存
   const savedIds = await Promise.all(
-    top5.map(({ place, distMeters, confidence }) => {
+    topCandidates.map(({ place, distMeters, confidence }) => {
       const data: Record<string, unknown> = {
         provider: 'google',
         name: place.displayName?.text ?? '',
@@ -157,7 +222,7 @@ async function fetchAndSaveCandidates(
     })
   );
 
-  return top5.map(({ place, distMeters, confidence }, i) => ({
+  return topCandidates.map(({ place, distMeters, confidence }, i) => ({
     id: savedIds[i],
     name: place.displayName?.text ?? '',
     category: mapToPlaceCategory(place.types ?? []),
@@ -174,7 +239,9 @@ async function fetchAndSaveCandidates(
  * - owner / editor のみ実行可能
  * - 同時実行防止: status=fetching なら already-exists エラー
  * - forceRefresh: false かつ 24時間以内の completed なら早期リターン
- * - 最大 5 グループまで処理（1グループ = 1 Places API リクエスト）
+ * - 最大 5 グループまで処理
+ * - food-related ノートでは restaurant/cafe Nearby + general Nearby を統合（最大2コール/グループ）
+ * - それ以外は general Nearby のみ（最大1コール/グループ）
  */
 export const enrichNotePlaces = onCall(
   { region: 'asia-northeast1', secrets: [googlePlacesApiKey] },
@@ -284,13 +351,20 @@ export const enrichNotePlaces = onCall(
 
       let placeGroupsCreated = 0;
 
-      // 11. グループごとに Places API を呼び出して PlaceGroupDoc + candidates を保存
+      // 11. food-related 判定（noteType / title / memo のヒューリスティック）
+      const isFoodRelated = isFoodRelatedNote({
+        title: noteData.title,
+        memo: noteData.memo,
+        noteType: noteData.noteType,
+      });
+      console.log(
+        `[enrichNotePlaces] noteId=${noteId.slice(0, 8)} isFoodRelated=${isFoodRelated} strategy=${isFoodRelated ? 'food+general' : 'general'}`
+      );
+
+      // 12. グループごとに Places API を呼び出して PlaceGroupDoc + candidates を保存
       for (const localGroup of localGroups) {
-        // Places API で候補取得
-        let places = await searchNearbyPlaces(apiKey, localGroup.latitude, localGroup.longitude, 200);
-        if (places.length === 0) {
-          places = await searchNearbyPlaces(apiKey, localGroup.latitude, localGroup.longitude, 500);
-        }
+        // Places API で候補取得（food-related なら restaurant/cafe + general を統合）
+        const places = await searchPlacesForGroup(apiKey, localGroup.latitude, localGroup.longitude, isFoodRelated);
 
         // 候補スコアリング
         const scored = places.map((place) => {
@@ -302,32 +376,29 @@ export const enrichNotePlaces = onCall(
           const confidence = calculatePreliminaryConfidence(distMeters, types, place.rating);
           return { place, distMeters, confidence };
         });
-        // distanceMeters 昇順ソート → 上位10件
-        // confidence は表示用の参考値として残すが、ソートには使わない（距離が同じ場合のみ tie-breaker）
+        // distanceMeters 昇順ソート。confidence は tie-breaker のみ
         scored.sort((a, b) => {
-          const dA = a.distMeters;
-          const dB = b.distMeters;
-          if (dA !== dB) return dA - dB;
+          if (a.distMeters !== b.distMeters) return a.distMeters - b.distMeters;
           return b.confidence - a.confidence;
         });
-        const top5 = scored.slice(0, 10);
+        const topCandidates = scored.slice(0, MAX_SAVED_CANDIDATES);
 
         // PlaceGroupDoc のラベル・カテゴリ・confidence は最上位候補（最近傍）から設定
         let label = '場所不明';
         let category: PlaceCategory = 'unknown';
         let topConfidence = 0;
         let topProviderPlaceId: string | undefined;
-        const source: PlaceGroupSource = top5.length > 0 ? 'places_api' : 'gps';
+        const source: PlaceGroupSource = topCandidates.length > 0 ? 'places_api' : 'gps';
 
-        if (top5.length > 0) {
-          const top = top5[0];
+        if (topCandidates.length > 0) {
+          const top = topCandidates[0];
           label = top.place.displayName?.text ?? '場所不明';
           category = mapToPlaceCategory(top.place.types ?? []);
           topConfidence = top.confidence;
           topProviderPlaceId = top.place.id;
         }
 
-        // PlaceGroupDoc を作成
+        // PlaceGroupDoc を作成（userConfirmed=false を維持）
         const groupDocData: Record<string, unknown> = {
           noteId,
           latitude: localGroup.latitude,
@@ -350,10 +421,10 @@ export const enrichNotePlaces = onCall(
         const groupRef = await placeGroupsRef.add(groupDocData);
         placeGroupsCreated++;
 
-        // candidates サブコレクションに保存（上位10件）
+        // candidates サブコレクションに保存（最大 MAX_SAVED_CANDIDATES 件、distanceMeters 昇順）
         const candidatesRef = groupRef.collection('candidates');
         await Promise.all(
-          top5.map(({ place, distMeters, confidence }) => {
+          topCandidates.map(({ place, distMeters, confidence }) => {
             const candidateData: Record<string, unknown> = {
               provider: 'google',
               name: place.displayName?.text ?? '',
@@ -438,7 +509,13 @@ export const getPlaceCandidatesForGroup = onCall(
     const forceRefresh = data.forceRefresh === true;
 
     const db = admin.firestore();
-    await assertOwnerOrEditor(db, noteId, uid);
+    const noteSnap = await assertOwnerOrEditor(db, noteId, uid);
+    const noteData = noteSnap.data()!;
+    const isFoodRelated = isFoodRelatedNote({
+      title: noteData.title,
+      memo: noteData.memo,
+      noteType: noteData.noteType,
+    });
 
     // PlaceGroup を取得
     const groupSnap = await db.doc(`memory_notes/${noteId}/place_groups/${placeGroupId}`).get();
@@ -490,7 +567,8 @@ export const getPlaceCandidatesForGroup = onCall(
         noteId,
         placeGroupId,
         groupLat,
-        groupLng
+        groupLng,
+        isFoodRelated
       );
     } catch (e) {
       console.error(`[getPlaceCandidatesForGroup] Places API error`);
@@ -498,7 +576,7 @@ export const getPlaceCandidatesForGroup = onCall(
     }
 
     console.log(
-      `[getPlaceCandidatesForGroup] cacheHit=false candidatesCount=${freshCandidates.length}`
+      `[getPlaceCandidatesForGroup] cacheHit=false candidatesCount=${freshCandidates.length} isFoodRelated=${isFoodRelated}`
     );
 
     return {
@@ -533,7 +611,13 @@ export const refreshPlaceCandidates = onCall(
     const placeGroupId = data.placeGroupId.trim();
 
     const db = admin.firestore();
-    await assertOwnerOrEditor(db, noteId, uid);
+    const noteSnap = await assertOwnerOrEditor(db, noteId, uid);
+    const noteData = noteSnap.data()!;
+    const isFoodRelated = isFoodRelatedNote({
+      title: noteData.title,
+      memo: noteData.memo,
+      noteType: noteData.noteType,
+    });
 
     const groupSnap = await db.doc(`memory_notes/${noteId}/place_groups/${placeGroupId}`).get();
     if (!groupSnap.exists) {
@@ -552,7 +636,8 @@ export const refreshPlaceCandidates = onCall(
         noteId,
         placeGroupId,
         groupData.latitude as number,
-        groupData.longitude as number
+        groupData.longitude as number,
+        isFoodRelated
       );
     } catch (e) {
       console.error(`[refreshPlaceCandidates] Places API error`);
@@ -560,7 +645,7 @@ export const refreshPlaceCandidates = onCall(
     }
 
     console.log(
-      `[refreshPlaceCandidates] noteId=${noteId.slice(0, 8)} uid=***${uid.slice(-4)} candidatesCount=${freshCandidates.length}`
+      `[refreshPlaceCandidates] noteId=${noteId.slice(0, 8)} uid=***${uid.slice(-4)} candidatesCount=${freshCandidates.length} isFoodRelated=${isFoodRelated}`
     );
 
     return {

@@ -294,7 +294,7 @@ function PlaceGroupCard({
       )}
       {candidates.length > 0 && (
         <View style={styles.candidatesSection}>
-          <Text style={styles.candidatesTitle}>Candidates ({candidates.length}件, 距離順)</Text>
+          <Text style={styles.candidatesTitle}>Candidates ({candidates.length}件 / 最大20件, 距離順)</Text>
           {candidates.map((c) => (
             <CandidateRow
               key={c.id}

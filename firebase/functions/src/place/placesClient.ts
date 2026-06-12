@@ -65,28 +65,35 @@ function httpsPost<T>(
  * - 候補が 0 件の場合は空配列を返す
  * - HTTP エラー / ネットワークエラーは例外をスロー（呼び出し元でハンドリング）
  *
- * @param apiKey   Secret Manager から取得した Google Places API キー
- * @param latitude  グループ代表点の緯度
- * @param longitude グループ代表点の経度
- * @param radiusMeters 検索半径 (m)。デフォルト 200m
+ * @param apiKey        Secret Manager から取得した Google Places API キー
+ * @param latitude      グループ代表点の緯度
+ * @param longitude     グループ代表点の経度
+ * @param radiusMeters  検索半径 (m)。デフォルト 200m
+ * @param includedTypes 場所タイプフィルタ（例: ['restaurant', 'cafe']）。未指定時はフィルタなし
  */
 export async function searchNearbyPlaces(
   apiKey: string,
   latitude: number,
   longitude: number,
-  radiusMeters = 200
+  radiusMeters = 200,
+  includedTypes?: string[]
 ): Promise<GooglePlace[]> {
-  const requestBody = {
+  const requestBody: Record<string, unknown> = {
     locationRestriction: {
       circle: {
         center: { latitude, longitude },
         radius: radiusMeters,
       },
     },
-    maxResultCount: 10,
+    maxResultCount: 20,
     languageCode: 'ja',
     rankPreference: 'DISTANCE',
   };
+
+  // includedTypes が指定されている場合のみ body に含める
+  if (includedTypes && includedTypes.length > 0) {
+    requestBody.includedTypes = includedTypes;
+  }
 
   const result = await httpsPost<GooglePlacesResponse>(
     NEARBY_SEARCH_URL,

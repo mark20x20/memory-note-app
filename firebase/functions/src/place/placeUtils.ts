@@ -104,6 +104,41 @@ export function haversineDistance(
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+// ── Food-related ノート判定 ───────────────────────────────────────────────────
+
+/** isFoodRelatedNote の判定に使用するノートの最小フィールド型 */
+export type NoteLike = {
+  title?: unknown;
+  memo?: unknown;
+  noteType?: unknown;
+};
+
+const FOOD_KEYWORDS_EN = [
+  'restaurant', 'cafe', 'coffee', 'food', 'meal',
+  'lunch', 'dinner', 'breakfast',
+];
+const FOOD_KEYWORDS_JA = [
+  'レストラン', 'カフェ', 'ご飯', '食事', '料理',
+  'ランチ', 'ディナー', '食べ', '飲み', '山葵', '日料',
+];
+const FOOD_NOTE_TYPES = ['restaurant', 'food', 'cafe'];
+
+/**
+ * ノートの noteType / title / memo から飲食系かを簡易判定する。
+ * ヒューリスティック判定のため誤判定あり。Phase 12.5E 以降で精度を上げる。
+ */
+export function isFoodRelatedNote(note: NoteLike): boolean {
+  const noteType = String(note.noteType ?? '').toLowerCase();
+  if (FOOD_NOTE_TYPES.some((t) => noteType.includes(t))) return true;
+
+  const text = [
+    String(note.title ?? ''),
+    String(note.memo ?? ''),
+  ].join(' ').toLowerCase();
+
+  return [...FOOD_KEYWORDS_EN, ...FOOD_KEYWORDS_JA].some((k) => text.includes(k));
+}
+
 // ── キャッシュ有効期限チェック ────────────────────────────────────────────────
 
 /** Places API キャッシュを 24時間で有効とみなす */
