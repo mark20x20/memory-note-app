@@ -84,6 +84,7 @@ export async function searchNearbyPlaces(
     },
     maxResultCount: 10,
     languageCode: 'ja',
+    rankPreference: 'DISTANCE',
   };
 
   const result = await httpsPost<GooglePlacesResponse>(

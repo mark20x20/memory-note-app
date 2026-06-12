@@ -88,7 +88,7 @@ async function recalculateVisitedPlacesSummary(
  * 1グループの候補を Places API から取得して candidates サブコレクションに保存する。
  * - 半径 200m で検索。0件なら 500m で再試行。
  * - 既存 candidates を削除してから保存する（forceRefresh 相当）。
- * - 候補は confidence 降順でソートして上位5件のみ保存する。
+ * - 候補は confidence 降順でソートして上位10件保存する。
  */
 async function fetchAndSaveCandidates(
   db: admin.firestore.Firestore,
@@ -119,9 +119,15 @@ async function fetchAndSaveCandidates(
     return { place, distMeters, confidence };
   });
 
-  // confidence 降順ソート → 上位5件
-  scored.sort((a, b) => b.confidence - a.confidence);
-  const top5 = scored.slice(0, 5);
+  // distanceMeters 昇順ソート → 上位10件
+  // confidence は表示用の参考値として残すが、ソートには使わない（距離が同じ場合のみ tie-breaker）
+  scored.sort((a, b) => {
+    const dA = a.distMeters;
+    const dB = b.distMeters;
+    if (dA !== dB) return dA - dB;
+    return b.confidence - a.confidence;
+  });
+  const top5 = scored.slice(0, 10);
 
   // 既存 candidates を削除
   const candidatesRef = db.collection(
@@ -296,10 +302,17 @@ export const enrichNotePlaces = onCall(
           const confidence = calculatePreliminaryConfidence(distMeters, types, place.rating);
           return { place, distMeters, confidence };
         });
-        scored.sort((a, b) => b.confidence - a.confidence);
-        const top5 = scored.slice(0, 5);
+        // distanceMeters 昇順ソート → 上位10件
+        // confidence は表示用の参考値として残すが、ソートには使わない（距離が同じ場合のみ tie-breaker）
+        scored.sort((a, b) => {
+          const dA = a.distMeters;
+          const dB = b.distMeters;
+          if (dA !== dB) return dA - dB;
+          return b.confidence - a.confidence;
+        });
+        const top5 = scored.slice(0, 10);
 
-        // PlaceGroupDoc のラベル・カテゴリ・confidence は最上位候補から設定
+        // PlaceGroupDoc のラベル・カテゴリ・confidence は最上位候補（最近傍）から設定
         let label = '場所不明';
         let category: PlaceCategory = 'unknown';
         let topConfidence = 0;
@@ -337,7 +350,7 @@ export const enrichNotePlaces = onCall(
         const groupRef = await placeGroupsRef.add(groupDocData);
         placeGroupsCreated++;
 
-        // candidates サブコレクションに保存（上位5件）
+        // candidates サブコレクションに保存（上位10件）
         const candidatesRef = groupRef.collection('candidates');
         await Promise.all(
           top5.map(({ place, distMeters, confidence }) => {
