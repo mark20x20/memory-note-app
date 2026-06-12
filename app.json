@@ -32,6 +32,14 @@
         {
           "photosPermission": "思い出ノートを作成するために、写真ライブラリへのアクセスを使用します。"
         }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "共有カード画像を写真ライブラリに保存するために使用します。",
+          "savePhotosPermission": "共有カード画像を写真ライブラリに保存するために使用します。",
+          "isAccessMediaLocationEnabled": false
+        }
       ]
     ],
     "experiments": {

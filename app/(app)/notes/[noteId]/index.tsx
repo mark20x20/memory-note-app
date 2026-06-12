@@ -236,6 +236,16 @@ export default function NoteDetailScreen() {
           </View>
         </View>
 
+        {/* ── Phase 12: 共有カードボタン ── */}
+        <View style={styles.section}>
+          <TouchableOpacity
+            style={styles.shareCardButton}
+            onPress={() => router.push(`/(app)/notes/${noteId}/share`)}
+          >
+            <Text style={styles.shareCardButtonText}>↗ 共有カードを作成</Text>
+          </TouchableOpacity>
+        </View>
+
         <Text style={styles.noteIdHint}>ノートID: {note.id}</Text>
       </ScrollView>
     </SafeAreaView>
@@ -451,6 +461,21 @@ const styles = StyleSheet.create({
   memberCountText: {
     fontSize: 14,
     color: colors.textSecondary,
+  },
+  // Phase 12: 共有カードボタン
+  shareCardButton: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: colors.mapAccent,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  shareCardButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.mapAccent,
   },
   noteIdHint: {
     marginTop: 32,
