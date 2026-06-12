@@ -112,6 +112,19 @@ export default function SettingsScreen() {
           </View>
         </View>
 
+        {/* Dev tools — __DEV__ only */}
+        {__DEV__ && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>開発用ツール</Text>
+            <View style={styles.card}>
+              <SettingsLinkRow
+                label="開発用: Place Callable Test"
+                onPress={() => router.push('/(app)/dev/place-callable-test' as any)}
+              />
+            </View>
+          </View>
+        )}
+
         {/* Logout */}
         <View style={styles.section}>
           <TouchableOpacity
@@ -144,9 +157,9 @@ function SettingsRow({ label, value, truncate }: { label: string; value: string;
   );
 }
 
-function SettingsLinkRow({ label }: { label: string }) {
+function SettingsLinkRow({ label, onPress }: { label: string; onPress?: () => void }) {
   return (
-    <TouchableOpacity style={styles.row}>
+    <TouchableOpacity style={styles.row} onPress={onPress}>
       <Text style={styles.rowLabel}>{label}</Text>
       <Text style={styles.rowArrow}>›</Text>
     </TouchableOpacity>
