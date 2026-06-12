@@ -155,3 +155,10 @@
 - [ ] Foursquare Places との比較テストを実施する → `03_foursquare_comparison_plan.md`
 - [ ] APIキー制限を本番用に設定する → `04_secret_and_billing_setup_checklist.md`
 - [ ] Phase 12.5B（データモデル実装）に進む
+
+判断: 採用
+
+理由:
+浅草寺、渋谷駅、金閣寺、嵐山、KLCC の全テスト地点で expected keyword hit が true となった。
+日本国内・海外ともに主要施設名が取得でき、languageCode: ja により日本語名称も返っている。
+types と rating も取得でき、Phase 12.5C の候補スコアリングに利用可能と判断した。
