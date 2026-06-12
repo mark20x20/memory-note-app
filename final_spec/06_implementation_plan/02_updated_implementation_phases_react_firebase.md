@@ -72,6 +72,7 @@
 | Phase 10 | Note Detail / Edit / Delete | 詳細閲覧・編集・削除 |
 | Phase 11 | Collaboration / Permissions | 共有ノート、招待、権限管理 |
 | Phase 12 | SNS Share Card | 共有カード生成・保存・共有 |
+| Phase 12.5 | Place Intelligence / Location Enrichment | 場所推定・施設候補取得・ユーザー確認・AI補助ランキング |
 | Phase 13 | Search / Calendar / Timeline | 検索・カレンダー・時系列閲覧 |
 | Phase 14 | Settings / Privacy / Support | 設定・権限説明・ヘルプ |
 | Phase 15 | Analytics / Monitoring / Cost Controls | 分析・監視・コスト制御 |
@@ -351,6 +352,37 @@
 **完了条件**
 - SNS向けに美しく共有できる
 - アプリの成長導線として機能する
+
+---
+
+### Phase 12.5: Place Intelligence / Location Enrichment
+**目的**
+- 写真の GPS 座標から「どこに行ったか」を名称・カテゴリとして推定する
+- 外部 Places API 候補 + スコアリング + AI 補助でユーザーに場所を提案する
+
+**成果物**
+- Google Places API (New) を Cloud Functions 経由で呼び出し
+- PlaceGroup / PlaceCandidate データモデル・Firestore 保存
+- 候補スコアリング・AI ランキング
+- ユーザー確認 UI（places / places/[id] / manual 画面）
+- Detail 画面への「訪れた場所」セクション追加
+- 本格 Map SDK（react-native-maps）でのピン表示
+- AI 日記・共有カードへの場所情報連携
+
+**完了条件**
+- 写真から訪れた場所名が推定できる
+- ユーザーが場所を確認・修正できる
+- 確定場所名が AI 日記と共有カードに反映される
+
+**サブフェーズ**
+- Phase 12.5A: Planning / Provider Decision
+- Phase 12.5B: Data Model / Firestore Schema
+- Phase 12.5C: Cloud Functions Candidate Retrieval
+- Phase 12.5D: Candidate Scoring / AI Ranking
+- Phase 12.5E: Places UI / User Confirmation
+- Phase 12.5F: Map SDK / Pin Plotting
+
+**詳細設計:** `docs/phase12_5_place_intelligence/` を参照
 
 ---
 
