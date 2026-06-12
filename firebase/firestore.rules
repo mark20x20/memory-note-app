@@ -71,6 +71,74 @@ service cloud.firestore {
         allow delete: if request.auth != null
           && get(/databases/$(database)/documents/memory_notes/$(noteId)).data.ownerId == request.auth.uid;
       }
+
+      // ── memory_notes/{noteId}/place_groups/{placeGroupId} ───────────────
+      // Phase 12.5B: Place Intelligence — PlaceGroup / PlaceCandidate Rules
+      //
+      // place_groups:
+      //   read:   members（owner / editor / viewer）
+      //   create: owner または editor
+      //   update: owner または editor
+      //   delete: owner のみ
+      //
+      // candidates（サブコレクション）:
+      //   read:   owner または editor のみ（viewer は非表示 — プライバシーポリシー準拠）
+      //   create: owner または editor
+      //   update: owner または editor
+      //   delete: owner のみ
+      //
+      // viewer に candidates を非表示にする理由:
+      //   候補リストには座標・住所・外部 API の rating 等が含まれる。
+      //   viewer は確定場所名（PlaceGroupDoc.label）のみ参照できれば十分。
+      //   07_privacy_security_cost_policy.md の viewer 表示方針と整合する。
+      match /place_groups/{placeGroupId} {
+        // read: note の members（viewer を含む）
+        allow read: if request.auth != null
+          && (get(/databases/$(database)/documents/memory_notes/$(noteId)).data.ownerId == request.auth.uid
+              || (get(/databases/$(database)/documents/memory_notes/$(noteId)).data.members != null
+                  && request.auth.uid in get(/databases/$(database)/documents/memory_notes/$(noteId)).data.members));
+
+        // create: owner または editor のみ
+        allow create: if request.auth != null
+          && (get(/databases/$(database)/documents/memory_notes/$(noteId)).data.members != null
+              && request.auth.uid in get(/databases/$(database)/documents/memory_notes/$(noteId)).data.members
+              && get(/databases/$(database)/documents/memory_notes/$(noteId)).data.members[request.auth.uid] in ['owner', 'editor']);
+
+        // update: owner または editor のみ
+        allow update: if request.auth != null
+          && (get(/databases/$(database)/documents/memory_notes/$(noteId)).data.members != null
+              && request.auth.uid in get(/databases/$(database)/documents/memory_notes/$(noteId)).data.members
+              && get(/databases/$(database)/documents/memory_notes/$(noteId)).data.members[request.auth.uid] in ['owner', 'editor']);
+
+        // delete: owner のみ
+        allow delete: if request.auth != null
+          && get(/databases/$(database)/documents/memory_notes/$(noteId)).data.ownerId == request.auth.uid;
+
+        // candidates サブコレクション: owner / editor のみ read 可
+        match /candidates/{candidateId} {
+          // read: owner または editor のみ（viewer は不可）
+          allow read: if request.auth != null
+            && (get(/databases/$(database)/documents/memory_notes/$(noteId)).data.members != null
+                && request.auth.uid in get(/databases/$(database)/documents/memory_notes/$(noteId)).data.members
+                && get(/databases/$(database)/documents/memory_notes/$(noteId)).data.members[request.auth.uid] in ['owner', 'editor']);
+
+          // create: owner または editor のみ（主に Cloud Functions Admin SDK から書き込む）
+          allow create: if request.auth != null
+            && (get(/databases/$(database)/documents/memory_notes/$(noteId)).data.members != null
+                && request.auth.uid in get(/databases/$(database)/documents/memory_notes/$(noteId)).data.members
+                && get(/databases/$(database)/documents/memory_notes/$(noteId)).data.members[request.auth.uid] in ['owner', 'editor']);
+
+          // update: owner または editor のみ
+          allow update: if request.auth != null
+            && (get(/databases/$(database)/documents/memory_notes/$(noteId)).data.members != null
+                && request.auth.uid in get(/databases/$(database)/documents/memory_notes/$(noteId)).data.members
+                && get(/databases/$(database)/documents/memory_notes/$(noteId)).data.members[request.auth.uid] in ['owner', 'editor']);
+
+          // delete: owner のみ
+          allow delete: if request.auth != null
+            && get(/databases/$(database)/documents/memory_notes/$(noteId)).data.ownerId == request.auth.uid;
+        }
+      }
     }
 
     // その他のコレクションは認証済みでも原則拒否

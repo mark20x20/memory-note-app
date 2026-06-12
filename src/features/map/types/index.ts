@@ -1,5 +1,7 @@
 // Phase 8: Map / Place Grouping — 型定義
 
+import type { Timestamp } from 'firebase/firestore';
+
 export type PhotoLocation = {
   photoId: string;
   latitude: number;
@@ -36,4 +38,127 @@ export type MapBounds = {
 export type NormalizedPoint = {
   x: number; // 0=左端 1=右端
   y: number; // 0=上端 1=下端
+};
+
+// ── Phase 12.5: Place Intelligence — Firestore 型定義 ────────────────────────
+
+/** NoteDoc の場所エンリッチメント処理ステータス */
+export type PlaceEnrichmentStatus = 'idle' | 'fetching' | 'completed' | 'failed';
+
+/** 場所のカテゴリ（UI 表示・AI 日記プロンプト用） */
+export type PlaceCategory =
+  | 'restaurant'
+  | 'cafe'
+  | 'tourist_attraction'
+  | 'station'
+  | 'hotel'
+  | 'shopping'
+  | 'park'
+  | 'museum'
+  | 'area'
+  | 'unknown';
+
+/** PlaceGroupDoc のデータソース */
+export type PlaceGroupSource =
+  | 'gps'          // GPS のみ（候補取得前）
+  | 'places_api'   // Places API 候補から自動選択
+  | 'ai_assisted'  // AI 補助によるスコアリング
+  | 'manual';      // ユーザー手動入力
+
+/** PlaceCandidateDoc の外部プロバイダ種別 */
+export type PlaceCandidateProvider =
+  | 'google'
+  | 'foursquare'
+  | 'osm'
+  | 'geocoding'
+  | 'manual';
+
+/** PlaceCandidateDoc の取得方法 */
+export type PlaceCandidateSource =
+  | 'places_api'
+  | 'geocoding'
+  | 'ai_ranked'
+  | 'manual';
+
+/**
+ * NoteDoc に付与する場所サマリー（非正規化）。
+ * AI 日記生成・共有カード表示が Firestore 1回読みで場所情報を参照できるようにする。
+ */
+export type VisitedPlacesSummary = {
+  confirmedCount: number;       // userConfirmed=true の場所数
+  totalGroupCount: number;      // PlaceGroup 総数
+  topPlaceLabels: string[];     // 確定場所名の先頭 3件（AI 日記・共有カード用）
+  areaLabel?: string;           // エリアレベルのラベル（例: 東京 浅草）
+  generatedAt: Timestamp;
+};
+
+/**
+ * Firestore: memory_notes/{noteId}/place_groups/{placeGroupId}
+ * Phase 8 の簡易グルーピング型（PlaceGroup）とは別物。
+ * PlaceGroup は loktal/UI 専用、PlaceGroupDoc は Firestore 保存用。
+ */
+export type PlaceGroupDoc = {
+  id: string;
+  noteId: string;
+
+  // 場所の位置（代表点）
+  latitude: number;
+  longitude: number;
+
+  // ラベルとカテゴリ
+  label: string;       // 例: "浅草寺"、"代官山 蔦屋書店"
+  category: PlaceCategory;
+
+  // この場所グループに属する写真
+  photoIds: string[];
+  photoCount: number;
+  coverPhotoURL?: string | null;
+
+  // 選択された候補
+  selectedCandidateId?: string;       // candidates サブコレクションの ID
+  selectedProviderPlaceId?: string;   // 外部 API の placeId（重複確認用）
+
+  // スコア・信頼度
+  confidence: number;  // 0.0 〜 1.0
+
+  // ユーザー確認状態
+  userConfirmed: boolean;      // true: ユーザーが確認・選択した
+  userEditedLabel?: string;    // 手動入力ラベル（selectedCandidateId がない場合）
+
+  // データソース
+  source: PlaceGroupSource;
+
+  // タイムスタンプ
+  createdAt: Timestamp | null;
+  updatedAt: Timestamp | null;
+};
+
+/**
+ * Firestore: memory_notes/{noteId}/place_groups/{placeGroupId}/candidates/{candidateId}
+ * 外部 API から取得した場所候補。API レスポンス全文は保存しない。
+ */
+export type PlaceCandidateDoc = {
+  id: string;
+
+  // 外部プロバイダ情報
+  provider: PlaceCandidateProvider;
+  providerPlaceId?: string;   // 外部 API の place_id（再取得・重複確認用）
+
+  // 場所情報
+  name: string;
+  address?: string;            // 住所（表示用）
+  types: string[];             // 外部 API のカテゴリ（例: ["tourist_attraction"]）
+  latitude: number;
+  longitude: number;
+
+  // スコア
+  distanceMeters?: number;    // PlaceGroup 代表点からの距離
+  rating?: number;            // 外部 API の評価（0.0〜5.0）
+  confidence?: number;        // このアプリでのスコアリング結果
+
+  // 取得方法
+  source: PlaceCandidateSource;
+
+  // タイムスタンプ
+  fetchedAt: Timestamp;
 };

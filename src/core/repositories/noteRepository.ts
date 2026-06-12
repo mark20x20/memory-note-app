@@ -12,6 +12,7 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 import { db } from '@/core/firebase/client';
+import type { PlaceEnrichmentStatus, VisitedPlacesSummary } from '@/features/map/types';
 
 export type NoteType = 'personal' | 'shared';
 export type MemberRole = 'owner' | 'editor' | 'viewer';
@@ -56,6 +57,16 @@ export interface NoteDoc {
   aiDiaryUpdatedAt?: Timestamp | null;
   /** 生成失敗時のユーザー向けエラーメッセージ */
   aiDiaryError?: string | null;
+
+  // Phase 12.5: Place Intelligence — すべて optional（既存ノートとの後方互換性を保つ）
+  /** 場所エンリッチメント処理ステータス */
+  placeEnrichmentStatus?: PlaceEnrichmentStatus | null;
+  /** エンリッチメント失敗時のエラーメッセージ */
+  placeEnrichmentError?: string | null;
+  /** エンリッチメントステータス最終更新日時 */
+  placeEnrichmentUpdatedAt?: Timestamp | null;
+  /** 確定済み場所のサマリー（AI 日記・共有カード用の非正規化データ） */
+  visitedPlacesSummary?: VisitedPlacesSummary | null;
 }
 
 export const noteRepository = {
