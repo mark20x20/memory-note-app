@@ -447,10 +447,10 @@ export const getPlaceCandidatesForGroup = onCall(
     }
     const groupData = groupSnap.data()!;
 
-    // 既存 candidates を取得してキャッシュ確認
+    // 既存 candidates を取得してキャッシュ確認（distanceMeters 昇順 — 近い順）
     const candidatesSnap = await db
       .collection(`memory_notes/${noteId}/place_groups/${placeGroupId}/candidates`)
-      .orderBy('confidence', 'desc')
+      .orderBy('distanceMeters', 'asc')
       .get();
 
     if (!forceRefresh && !candidatesSnap.empty) {

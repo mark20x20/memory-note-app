@@ -68,8 +68,9 @@ export const placeGroupRepository = {
   },
 
   /**
-   * PlaceGroup に紐づく候補一覧を取得する（confidence 降順）。
+   * PlaceGroup に紐づく候補一覧を取得する（distanceMeters 昇順）。
    * Cloud Functions が candidates サブコレクションに書き込んだ後にクライアントが参照する。
+   * confidence はユーザー向け順位付けには使わない（表示用の参考値）。
    */
   async getPlaceCandidatesByGroupId(
     noteId: string,
@@ -84,7 +85,7 @@ export const placeGroupRepository = {
       placeGroupId,
       'candidates'
     );
-    const q = query(colRef, orderBy('confidence', 'desc'));
+    const q = query(colRef, orderBy('distanceMeters', 'asc'));
     const snap = await getDocs(q);
     return snap.docs.map((d) => ({ id: d.id, ...d.data() } as PlaceCandidateDoc));
   },

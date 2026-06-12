@@ -294,7 +294,7 @@ function PlaceGroupCard({
       )}
       {candidates.length > 0 && (
         <View style={styles.candidatesSection}>
-          <Text style={styles.candidatesTitle}>Candidates ({candidates.length}件)</Text>
+          <Text style={styles.candidatesTitle}>Candidates ({candidates.length}件, 距離順)</Text>
           {candidates.map((c) => (
             <CandidateRow
               key={c.id}
@@ -320,9 +320,10 @@ function CandidateRow({
   return (
     <View style={styles.candidateRow}>
       <Text style={styles.candidateName}>{candidate.name}</Text>
-      <InfoRow label="confidence" value={(candidate.confidence ?? 0).toFixed(2)} />
-      <InfoRow label="distanceMeters" value={String(candidate.distanceMeters ?? '-')} />
+      {/* distanceMeters 昇順（近い順）— confidence はユーザー向け順位付けに使わない */}
+      <InfoRow label="距離 (m)" value={candidate.distanceMeters != null ? String(Math.round(candidate.distanceMeters)) : '-'} />
       <InfoRow label="rating" value={String(candidate.rating ?? '-')} />
+      <InfoRow label="confidence (参考)" value={(candidate.confidence ?? 0).toFixed(2)} />
       <SmallButton label="selectPlaceCandidate" onPress={onSelect} />
     </View>
   );

@@ -6,6 +6,7 @@ import * as https from 'https';
 import type { GooglePlace, GooglePlacesResponse } from './types';
 
 const NEARBY_SEARCH_URL = 'https://places.googleapis.com/v1/places:searchNearby';
+const TEXT_SEARCH_URL = 'https://places.googleapis.com/v1/places:searchText';
 const FIELD_MASK =
   'places.id,places.displayName,places.formattedAddress,places.types,places.location,places.rating';
 
@@ -89,6 +90,49 @@ export async function searchNearbyPlaces(
 
   const result = await httpsPost<GooglePlacesResponse>(
     NEARBY_SEARCH_URL,
+    {
+      'X-Goog-Api-Key': apiKey,
+      'X-Goog-FieldMask': FIELD_MASK,
+    },
+    requestBody
+  );
+
+  return result.places ?? [];
+}
+
+/**
+ * Google Places API (New) Text Search を呼び出す。
+ * Nearby Search で目的の場所が返らない場合の fallback として使用する。
+ * 本番 Cloud Functions への組み込みは診断結果を確認してから次フェーズで行う。
+ *
+ * @param apiKey        Secret Manager から取得した Google Places API キー
+ * @param textQuery     検索テキスト（例: "Wasabi Plus Bukit Jalil"）
+ * @param latitude      中心点の緯度（locationBias）
+ * @param longitude     中心点の経度（locationBias）
+ * @param radiusMeters  locationBias の半径 (m)。デフォルト 1000m
+ * @param languageCode  レスポンス言語。デフォルト 'ja'
+ */
+export async function searchTextPlaces(
+  apiKey: string,
+  textQuery: string,
+  latitude: number,
+  longitude: number,
+  radiusMeters = 1000,
+  languageCode = 'ja'
+): Promise<GooglePlace[]> {
+  const requestBody = {
+    textQuery,
+    locationBias: {
+      circle: {
+        center: { latitude, longitude },
+        radius: radiusMeters,
+      },
+    },
+    languageCode,
+  };
+
+  const result = await httpsPost<GooglePlacesResponse>(
+    TEXT_SEARCH_URL,
     {
       'X-Goog-Api-Key': apiKey,
       'X-Goog-FieldMask': FIELD_MASK,
