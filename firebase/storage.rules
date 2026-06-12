@@ -2,10 +2,17 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
 
-    // Phase 7: ユーザーごとのノート写真
-    // write: 認証済み & 自分のパス & 画像ファイル & 10MB 以下
-    // read:  認証済み & 自分のパス
-    // Phase 11 以降でメンバー読み取り・パブリック共有を追加予定
+    // ── ノート写真 ────────────────────────────────────────────────────────────
+    // パス: users/{uid}/memory_notes/{noteId}/photos/{fileName}
+    // uid はノート所有者の UID（写真は常にノートオーナーの Storage パスに保存）
+    //
+    // Phase 11 権限:
+    // - create/update: owner のみ（uid == request.auth.uid, 画像形式, 10MB 以下）
+    // - delete:        owner のみ
+    // - read:          ノートの members に含まれるユーザー（firestore.get で確認）
+    //
+    // editor は現時点では写真アップロード不可（Phase 11 スコープ外）。
+    // Phase 11 以降でアップロードパスを共通化して editor 対応を追加予定。
     match /users/{uid}/memory_notes/{noteId}/photos/{fileName} {
       allow create, update: if request.auth != null
         && request.auth.uid == uid
@@ -16,8 +23,14 @@ service firebase.storage {
       allow delete: if request.auth != null
         && request.auth.uid == uid;
 
+      // Phase 11: ノート members に含まれるユーザーが read 可
+      // - 自分が owner（uid == request.auth.uid）の場合は常に read 可
+      // - それ以外は Firestore のノート members マップを確認する
       allow read: if request.auth != null
-        && request.auth.uid == uid;
+        && (request.auth.uid == uid
+            || firestore.get(
+                /databases/(default)/documents/memory_notes/$(noteId)
+               ).data.members[request.auth.uid] != null);
     }
 
     // その他のパスは原則拒否

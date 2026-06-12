@@ -1,3 +1,9 @@
+// Phase 10: Note Detail Screen
+// Phase 11: Permission-gated edit button / member management button / AI diary regeneration.
+// - owner/editor: 編集ボタン表示
+// - owner のみ: メンバー管理ボタン表示
+// - viewer: 編集ボタン非表示、AI再生成ボタン非表示
+
 import { router, useLocalSearchParams } from 'expo-router';
 import {
   View,
@@ -11,18 +17,28 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ScreenHeader } from '@/shared/components/ui';
 import { colors } from '@/shared/theme/colors';
+import { useAuth } from '@/core/auth/AuthContext';
 import { useNoteDetail } from '@/features/memoryNotes/hooks/useNoteDetail';
 import { useNotePhotos } from '@/features/photos/hooks/useNotePhotos';
 import { MapPreview } from '@/features/map/components/MapPreview';
 import { getPhotoLocationsFromPhotos } from '@/features/map/utils/locationUtils';
 import { AiDiarySection } from '@/features/memoryNotes/components/AiDiarySection';
+import { canEdit, canManageMembers, canGenerateAiDiary, getCurrentUserRole } from '@/features/memoryNotes/utils/permissions';
 
 function formatDate(date: Date): string {
   return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
 }
 
+const ROLE_LABEL: Record<string, string> = {
+  owner: 'Owner',
+  editor: '編集者',
+  viewer: '閲覧者',
+};
+
 export default function NoteDetailScreen() {
   const { noteId } = useLocalSearchParams<{ noteId: string }>();
+  const authState = useAuth();
+  const uid = authState.status === 'signedIn' ? authState.user.uid : null;
 
   // Phase 9: onSnapshot でリアルタイム購読（aiDiaryStatus の変化を自動反映）
   const { note, isLoading, error } = useNoteDetail(noteId ?? null);
@@ -30,6 +46,13 @@ export default function NoteDetailScreen() {
   const { photos: notePhotos, isLoading: photosLoading } = useNotePhotos(noteId ?? null);
   const coverPhoto = notePhotos[0] ?? null;
   const photoLocations = getPhotoLocationsFromPhotos(notePhotos);
+
+  // Phase 11: 権限チェック
+  const userCanEdit = uid && note ? canEdit(note, uid) : false;
+  const userCanManageMembers = uid && note ? canManageMembers(note, uid) : false;
+  const userCanGenerateAi = uid && note ? canGenerateAiDiary(note, uid) : false;
+  const userRole = uid && note ? getCurrentUserRole(note, uid) : null;
+  const memberCount = note ? Object.keys(note.members ?? {}).length : 0;
 
   if (isLoading) {
     return (
@@ -77,15 +100,17 @@ export default function NoteDetailScreen() {
         title="ノート詳細"
         onBack={() => router.back()}
         rightElement={
-          // Phase 10: 編集画面へ遷移するボタン
-          <TouchableOpacity
-            style={styles.editButton}
-            onPress={() => router.push(`/(app)/notes/${noteId}/edit`)}
-            hitSlop={8}
-            accessibilityLabel="編集"
-          >
-            <Text style={styles.editButtonText}>編集</Text>
-          </TouchableOpacity>
+          // Phase 11: owner/editor のみ編集ボタンを表示
+          userCanEdit ? (
+            <TouchableOpacity
+              style={styles.editButton}
+              onPress={() => router.push(`/(app)/notes/${noteId}/edit`)}
+              hitSlop={8}
+              accessibilityLabel="編集"
+            >
+              <Text style={styles.editButtonText}>編集</Text>
+            </TouchableOpacity>
+          ) : null
         }
       />
 
@@ -125,6 +150,12 @@ export default function NoteDetailScreen() {
                 <Text style={styles.metaChipText}>📷 {note.photoCount}枚</Text>
               </View>
             ) : null}
+            {/* Phase 11: 自分のロール表示 */}
+            {userRole ? (
+              <View style={[styles.metaChip, styles.metaChipRole]}>
+                <Text style={styles.metaChipText}>{ROLE_LABEL[userRole] ?? userRole}</Text>
+              </View>
+            ) : null}
           </View>
         </View>
 
@@ -138,10 +169,10 @@ export default function NoteDetailScreen() {
           </View>
         ) : null}
 
-        {/* ── AI日記セクション（Phase 9 実装） ── */}
+        {/* ── AI日記セクション（Phase 9 実装、Phase 11 で canRegenerate 追加） ── */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>AI日記</Text>
-          <AiDiarySection noteId={noteId} note={note} />
+          <AiDiarySection noteId={noteId} note={note} canRegenerate={userCanGenerateAi} />
         </View>
 
         {/* ── 写真セクション ── */}
@@ -181,14 +212,27 @@ export default function NoteDetailScreen() {
           )}
         </View>
 
-        {/* ── メンバー ── */}
+        {/* ── メンバーセクション（Phase 11 実装） ── */}
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>メンバー</Text>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionLabel}>メンバー</Text>
+            {/* Phase 11: owner のみメンバー管理ボタンを表示 */}
+            {userCanManageMembers ? (
+              <TouchableOpacity
+                style={styles.manageMembersButton}
+                onPress={() => router.push(`/(app)/notes/${noteId}/members`)}
+                hitSlop={8}
+              >
+                <Text style={styles.manageMembersButtonText}>管理</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
           <View style={styles.membersRow}>
-            <View style={styles.memberAvatar}>
-              <Text style={styles.memberAvatarText}>👤</Text>
-            </View>
-            <Text style={styles.memberLabel}>あなた（Owner）</Text>
+            <Text style={styles.memberCountText}>
+              {memberCount > 1
+                ? `${memberCount}人が参加中`
+                : '個人ノート'}
+            </Text>
           </View>
         </View>
 
@@ -293,6 +337,9 @@ const styles = StyleSheet.create({
   metaChipType: {
     backgroundColor: colors.primaryLight,
   },
+  metaChipRole: {
+    backgroundColor: colors.mapAccentLight,
+  },
   metaChipText: {
     fontSize: 13,
     color: colors.textSecondary,
@@ -303,13 +350,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 24,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
   sectionLabel: {
     fontSize: 13,
     fontWeight: '600',
     color: colors.textTertiary,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
-    marginBottom: 12,
   },
   // Memo
   memoCard: {
@@ -376,26 +428,27 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.mapAccent,
   },
-  // Members
-  membersRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  memberAvatar: {
-    width: 40,
-    height: 40,
+  // Members (Phase 11)
+  manageMembersButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
     borderRadius: 20,
-    backgroundColor: colors.surfaceIvory,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  manageMembersButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  membersRow: {
+    backgroundColor: colors.surface,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
+    padding: 14,
   },
-  memberAvatarText: {
-    fontSize: 20,
-  },
-  memberLabel: {
+  memberCountText: {
     fontSize: 14,
     color: colors.textSecondary,
   },

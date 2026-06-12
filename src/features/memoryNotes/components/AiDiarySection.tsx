@@ -1,6 +1,7 @@
 // Phase 9: AI日記セクションコンポーネント
 // 4状態（idle / generating / completed / failed）に応じた UI を表示する。
 // AI日記の生成失敗が他のセクション（写真・地図・メモ）に影響しないよう独立させる。
+// Phase 11: canRegenerate prop を追加。viewer は再生成ボタンを表示しない。
 
 import React from 'react';
 import {
@@ -20,6 +21,8 @@ import { useGenerateDiary } from '@/features/memoryNotes/hooks/useGenerateDiary'
 type Props = {
   noteId: string;
   note: NoteDoc;
+  /** Phase 11: false のとき生成・再生成ボタンを非表示にする（viewer 向け）。デフォルト true。 */
+  canRegenerate?: boolean;
 };
 
 function formatTimestamp(ts: Timestamp | null | undefined): string | null {
@@ -30,7 +33,7 @@ function formatTimestamp(ts: Timestamp | null | undefined): string | null {
 
 // ────────────────────────────────────────────────────────────────────────────
 
-export function AiDiarySection({ noteId, note }: Props) {
+export function AiDiarySection({ noteId, note, canRegenerate = true }: Props) {
   const { generate, isGenerating } = useGenerateDiary();
 
   // フィールドなし / null / undefined は 'idle' として扱う
@@ -59,23 +62,31 @@ export function AiDiarySection({ noteId, note }: Props) {
         <View style={styles.card}>
           <Text style={styles.diaryText}>{note.aiDiary}</Text>
         </View>
-        <View style={styles.completedFooter}>
-          {dateStr ? (
-            <Text style={styles.generatedDate}>生成日: {dateStr}</Text>
-          ) : (
-            <View />
-          )}
-          <TouchableOpacity
-            style={[styles.regenerateButton, isGenerating && styles.buttonDisabled]}
-            onPress={handleGenerate}
-            disabled={isGenerating}
-            hitSlop={8}
-          >
-            <Text style={styles.regenerateButtonText}>
-              {isGenerating ? '生成中...' : '再生成'}
-            </Text>
-          </TouchableOpacity>
-        </View>
+        {canRegenerate ? (
+          <View style={styles.completedFooter}>
+            {dateStr ? (
+              <Text style={styles.generatedDate}>生成日: {dateStr}</Text>
+            ) : (
+              <View />
+            )}
+            <TouchableOpacity
+              style={[styles.regenerateButton, isGenerating && styles.buttonDisabled]}
+              onPress={handleGenerate}
+              disabled={isGenerating}
+              hitSlop={8}
+            >
+              <Text style={styles.regenerateButtonText}>
+                {isGenerating ? '生成中...' : '再生成'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          dateStr ? (
+            <View style={styles.completedFooter}>
+              <Text style={styles.generatedDate}>生成日: {dateStr}</Text>
+            </View>
+          ) : null
+        )}
       </View>
     );
   }
@@ -91,20 +102,33 @@ export function AiDiarySection({ noteId, note }: Props) {
             {note.aiDiaryError ?? 'もう一度お試しください。'}
           </Text>
         </View>
-        <TouchableOpacity
-          style={[styles.retryButton, isGenerating && styles.buttonDisabled]}
-          onPress={handleGenerate}
-          disabled={isGenerating}
-        >
-          <Text style={styles.retryButtonText}>
-            {isGenerating ? '生成中...' : '再試行'}
-          </Text>
-        </TouchableOpacity>
+        {canRegenerate ? (
+          <TouchableOpacity
+            style={[styles.retryButton, isGenerating && styles.buttonDisabled]}
+            onPress={handleGenerate}
+            disabled={isGenerating}
+          >
+            <Text style={styles.retryButtonText}>
+              {isGenerating ? '生成中...' : '再試行'}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
     );
   }
 
   // ── idle（未生成）────────────────────────────────────────────────────────────
+  if (!canRegenerate) {
+    // viewer: 生成ボタンは表示しない
+    return (
+      <View style={styles.card}>
+        <Text style={styles.idleDescription}>
+          AIが写真・場所・日付から{'\n'}短い思い出日記を生成できます。
+        </Text>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.card}>
       <Text style={styles.idleDescription}>

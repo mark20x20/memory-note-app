@@ -1,6 +1,8 @@
 // Phase 10: ノート編集画面
-// タイトル・メモ・ノート種別・AI日記本文を編集し保存する。
-// 削除ボタンで確認ダイアログを表示してノートを削除する。
+// Phase 11: 権限制御を追加。
+// - viewer が URL 直接アクセスした場合は権限エラーを表示し、保存ボタンを無効化
+// - editor は title / memo / noteType / aiDiary を編集可、削除ボタン非表示
+// - owner は全機能を使用可（削除ボタンあり）
 
 import { useState, useEffect } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -19,13 +21,18 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ScreenHeader } from '@/shared/components/ui';
 import { colors } from '@/shared/theme/colors';
+import { useAuth } from '@/core/auth/AuthContext';
 import { useNoteDetail } from '@/features/memoryNotes/hooks/useNoteDetail';
 import { useUpdateNote } from '@/features/memoryNotes/hooks/useUpdateNote';
 import { useDeleteNote } from '@/features/memoryNotes/hooks/useDeleteNote';
+import { canEdit, canDelete } from '@/features/memoryNotes/utils/permissions';
 import type { NoteType } from '@/core/repositories/noteRepository';
 
 export default function NoteEditScreen() {
   const { noteId } = useLocalSearchParams<{ noteId: string }>();
+  const authState = useAuth();
+  const uid = authState.status === 'signedIn' ? authState.user.uid : null;
+
   const { note, isLoading } = useNoteDetail(noteId ?? null);
   const { update, isUpdating, error: updateError } = useUpdateNote();
   const { deleteNote, isDeleting, error: deleteError } = useDeleteNote();
@@ -36,6 +43,10 @@ export default function NoteEditScreen() {
   const [noteType, setNoteType] = useState<NoteType>('personal');
   const [aiDiary, setAiDiary] = useState('');
   const [initialized, setInitialized] = useState(false);
+
+  // Phase 11: 権限チェック
+  const userCanEdit = uid && note ? canEdit(note, uid) : false;
+  const userCanDelete = uid && note ? canDelete(note, uid) : false;
 
   // ノートが読み込まれたら初期値をセット（1回だけ）
   useEffect(() => {
@@ -56,6 +67,7 @@ export default function NoteEditScreen() {
 
   const handleSave = async () => {
     if (!noteId) return;
+    if (!userCanEdit) return; // 念のため
     if (!title.trim()) {
       Alert.alert('入力エラー', 'タイトルを入力してください');
       return;
@@ -115,6 +127,20 @@ export default function NoteEditScreen() {
         <View style={styles.centered}>
           <Text style={styles.errorEmoji}>🔍</Text>
           <Text style={styles.errorText}>ノートが見つかりませんでした</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Phase 11: viewer は編集不可 — 権限エラー表示
+  if (!userCanEdit) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+        <ScreenHeader title="編集" onBack={() => router.back()} />
+        <View style={styles.centered}>
+          <Text style={styles.errorEmoji}>🔒</Text>
+          <Text style={styles.errorText}>編集権限がありません</Text>
+          <Text style={styles.errorDetail}>このノートを編集するには editor 以上の権限が必要です。</Text>
         </View>
       </SafeAreaView>
     );
@@ -267,23 +293,27 @@ export default function NoteEditScreen() {
             )}
           </TouchableOpacity>
 
-          {/* 削除ボタン */}
-          <TouchableOpacity
-            style={[styles.deleteButton, isBusy && styles.buttonDisabled]}
-            onPress={handleDelete}
-            disabled={isBusy}
-            activeOpacity={0.85}
-          >
-            {isDeleting ? (
-              <ActivityIndicator color={colors.error} size="small" />
-            ) : (
-              <Text style={styles.deleteButtonText}>このノートを削除する</Text>
-            )}
-          </TouchableOpacity>
+          {/* Phase 11: owner のみ削除ボタンを表示 */}
+          {userCanDelete ? (
+            <>
+              <TouchableOpacity
+                style={[styles.deleteButton, isBusy && styles.buttonDisabled]}
+                onPress={handleDelete}
+                disabled={isBusy}
+                activeOpacity={0.85}
+              >
+                {isDeleting ? (
+                  <ActivityIndicator color={colors.error} size="small" />
+                ) : (
+                  <Text style={styles.deleteButtonText}>このノートを削除する</Text>
+                )}
+              </TouchableOpacity>
 
-          <Text style={styles.deleteCaption}>
-            削除すると写真も含めて完全に消去されます
-          </Text>
+              <Text style={styles.deleteCaption}>
+                削除すると写真も含めて完全に消去されます
+              </Text>
+            </>
+          ) : null}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -318,6 +348,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.textPrimary,
     textAlign: 'center',
+  },
+  errorDetail: {
+    fontSize: 13,
+    color: colors.textTertiary,
+    textAlign: 'center',
+    lineHeight: 20,
   },
   scroll: {
     paddingHorizontal: 20,

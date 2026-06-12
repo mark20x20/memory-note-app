@@ -2,15 +2,19 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // users/{uid}: 自分のドキュメントのみ read/write 可
+    // ── users/{uid} ──────────────────────────────────────────────────────────
+    // Phase 11: 認証済みユーザーなら誰でも read 可（メンバー表示のため）。
+    // write は自分自身のドキュメントのみ。
     match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
     }
 
-    // memory_notes/{noteId}: Phase 5 — personal note CRUD
-    // read/update: ownerId == uid OR uid is in members map
+    // ── memory_notes/{noteId} ────────────────────────────────────────────────
+    // read:   owner または members に含まれるユーザー
     // create: 認証済み & ownerId == 自分
-    // delete: ownerId のみ（Owner のみ削除可）
+    // update: owner または editor（Phase 11: members はクライアントから変更不可）
+    // delete: owner のみ
     match /memory_notes/{noteId} {
       allow read: if request.auth != null
         && (resource.data.ownerId == request.auth.uid
@@ -20,32 +24,52 @@ service cloud.firestore {
       allow create: if request.auth != null
         && request.resource.data.ownerId == request.auth.uid;
 
+      // Phase 11: update 条件を強化
+      // - owner または editor のみ
+      // - ownerId は変更不可
+      // - members はクライアントから直接変更不可（Cloud Functions Admin SDK 経由のみ）
       allow update: if request.auth != null
         && (resource.data.ownerId == request.auth.uid
             || (resource.data.members != null
-                && request.auth.uid in resource.data.members));
+                && request.auth.uid in resource.data.members
+                && resource.data.members[request.auth.uid] in ['owner', 'editor']))
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.members == resource.data.members;
 
       allow delete: if request.auth != null
         && resource.data.ownerId == request.auth.uid;
 
-      // memory_notes/{noteId}/photos/{photoId}: Phase 7 — 写真メタデータ
-      // write: note owner のみ
-      // read:  note owner + members（members は get() で親ドキュメントを参照）
-      // delete: note owner のみ
+      // ── memory_notes/{noteId}/photos/{photoId} ──────────────────────────
+      // Phase 11: 権限を role ベースに更新
+      // read:   note members（owner / editor / viewer）
+      // create: owner または editor（ownerId == 自分）
+      // update: owner または editor
+      // delete: owner のみ
       match /photos/{photoId} {
-        allow create: if request.auth != null
-          && request.resource.data.ownerId == request.auth.uid;
-
+        // read: note の members に含まれるユーザー（get() で親 doc を参照）
         allow read: if request.auth != null
           && (resource.data.ownerId == request.auth.uid
               || (get(/databases/$(database)/documents/memory_notes/$(noteId)).data.members != null
                   && request.auth.uid in get(/databases/$(database)/documents/memory_notes/$(noteId)).data.members));
 
-        allow update: if request.auth != null
-          && resource.data.ownerId == request.auth.uid;
+        // create: owner または editor のみ（ownerId == 自分）
+        allow create: if request.auth != null
+          && request.resource.data.ownerId == request.auth.uid
+          && (get(/databases/$(database)/documents/memory_notes/$(noteId)).data.members != null
+              && request.auth.uid in get(/databases/$(database)/documents/memory_notes/$(noteId)).data.members
+              && get(/databases/$(database)/documents/memory_notes/$(noteId)).data.members[request.auth.uid] in ['owner', 'editor']);
 
+        // update: owner または editor
+        allow update: if request.auth != null
+          && (resource.data.ownerId == request.auth.uid
+              || (get(/databases/$(database)/documents/memory_notes/$(noteId)).data.members != null
+                  && request.auth.uid in get(/databases/$(database)/documents/memory_notes/$(noteId)).data.members
+                  && get(/databases/$(database)/documents/memory_notes/$(noteId)).data.members[request.auth.uid] in ['owner', 'editor']));
+
+        // delete: owner のみ（Storage cleanup 時は admin SDK から実行するが、
+        // クライアント削除も owner のみ許可）
         allow delete: if request.auth != null
-          && resource.data.ownerId == request.auth.uid;
+          && get(/databases/$(database)/documents/memory_notes/$(noteId)).data.ownerId == request.auth.uid;
       }
     }
 

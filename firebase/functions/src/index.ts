@@ -1,11 +1,11 @@
 // Phase 9: AI Diary Generation via Cloud Functions
-// generateMemoryDiary — Callable Function (Firebase Functions v2)
+// Phase 11: Member Management via Cloud Functions
 //
 // セキュリティ方針:
-// - OpenAI APIキーは Secret Manager で管理 (OPENAI_API_KEY)
+// - OpenAI APIキーは Secret Manager で管理 (OPENAI_API_KEY) — generateMemoryDiary のみ使用
 // - 写真画像は送らない。メタデータのみ使用
-// - Vision API 不使用
-// - ログに APIキー・日記全文・メモ全文を出力しない
+// - メンバー管理は Firestore Admin SDK で行い、クライアントから直接 members を変更させない
+// - ログに個人情報・APIキーを出力しない
 
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { defineSecret } from 'firebase-functions/params';
@@ -114,7 +114,30 @@ function buildUserPrompt(ctx: DiaryContext): string {
   return lines.join('\n');
 }
 
-// ── Callable Function ─────────────────────────────────────────────────────────
+// ── Phase 11: ヘルパー ────────────────────────────────────────────────────────
+
+type MemberRole = 'owner' | 'editor' | 'viewer';
+
+/** noteId を取得・owner 権限確認する共通ヘルパー */
+async function getOwnedNote(
+  db: admin.firestore.Firestore,
+  noteId: string,
+  callerUid: string
+): Promise<admin.firestore.DocumentSnapshot> {
+  const noteRef = db.doc(`memory_notes/${noteId}`);
+  const noteSnap = await noteRef.get();
+  if (!noteSnap.exists) {
+    throw new HttpsError('not-found', 'ノートが見つかりません');
+  }
+  const noteData = noteSnap.data()!;
+  const ownerId = noteData.ownerId as string;
+  if (ownerId !== callerUid) {
+    throw new HttpsError('permission-denied', 'ownerのみこの操作を実行できます');
+  }
+  return noteSnap;
+}
+
+// ── generateMemoryDiary ───────────────────────────────────────────────────────
 
 export const generateMemoryDiary = onCall(
   { region: 'asia-northeast1', secrets: [openaiApiKey] },
@@ -142,15 +165,13 @@ export const generateMemoryDiary = onCall(
     }
     const noteData = noteSnap.data()!;
 
-    // 4. owner / member 権限確認
-    const ownerId = noteData.ownerId as string;
+    // 4. Phase 11: owner / editor のみ生成可（viewer は不可）
     const members = noteData.members as Record<string, string> | undefined;
-    const isOwner = ownerId === uid;
-    const isMember = members != null && uid in members;
-    if (!isOwner && !isMember) {
+    const userRole = members?.[uid] as MemberRole | undefined;
+    if (!userRole || !['owner', 'editor'].includes(userRole)) {
       throw new HttpsError(
         'permission-denied',
-        'このノートへのアクセス権限がありません'
+        'AI日記の生成には editor 以上の権限が必要です'
       );
     }
 
@@ -250,5 +271,231 @@ export const generateMemoryDiary = onCall(
       if (e instanceof HttpsError) throw e;
       throw new HttpsError('internal', 'AI生成に失敗しました');
     }
+  }
+);
+
+// ── Phase 11: addNoteMemberByEmail ───────────────────────────────────────────
+
+export const addNoteMemberByEmail = onCall(
+  { region: 'asia-northeast1' },
+  async (request) => {
+    // 1. 認証チェック
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', '認証が必要です');
+    }
+    const uid = request.auth.uid;
+
+    // 2. バリデーション
+    const data = request.data as {
+      noteId?: unknown;
+      email?: unknown;
+      role?: unknown;
+    };
+    if (typeof data.noteId !== 'string' || !data.noteId.trim()) {
+      throw new HttpsError('invalid-argument', 'noteId が不正です');
+    }
+    if (typeof data.email !== 'string' || !data.email.trim()) {
+      throw new HttpsError('invalid-argument', 'email が不正です');
+    }
+    if (!['editor', 'viewer'].includes(data.role as string)) {
+      throw new HttpsError(
+        'invalid-argument',
+        'role は editor または viewer を指定してください'
+      );
+    }
+
+    const noteId = data.noteId.trim();
+    const email = data.email.trim().toLowerCase();
+    const role = data.role as 'editor' | 'viewer';
+
+    const db = admin.firestore();
+
+    // 3. ノート取得・owner 権限確認
+    const noteSnap = await getOwnedNote(db, noteId, uid);
+    const noteData = noteSnap.data()!;
+
+    // 4. email でユーザー検索（users コレクション）
+    const userQuery = await db
+      .collection('users')
+      .where('email', '==', email)
+      .limit(1)
+      .get();
+
+    if (userQuery.empty) {
+      throw new HttpsError(
+        'not-found',
+        'このメールアドレスのユーザーが見つかりません。アプリに登録済みのユーザーを指定してください。'
+      );
+    }
+
+    const targetUserDoc = userQuery.docs[0];
+    const targetUid = targetUserDoc.id;
+    const targetData = targetUserDoc.data();
+
+    // 5. 自分自身を追加しようとしていないか
+    if (targetUid === uid) {
+      throw new HttpsError(
+        'invalid-argument',
+        '自分自身をメンバーに追加することはできません'
+      );
+    }
+
+    // 6. すでにメンバーか
+    const members = noteData.members as Record<string, string> | undefined;
+    if (members && targetUid in members) {
+      throw new HttpsError('already-exists', 'このユーザーはすでにメンバーです');
+    }
+
+    // 7. members を更新（Admin SDK でドットパスを使って特定フィールドのみ更新）
+    await db.doc(`memory_notes/${noteId}`).update({
+      [`members.${targetUid}`]: role,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    console.log(
+      `[addNoteMemberByEmail] noteId=${noteId} ownerUid=***${uid.slice(-4)} targetUid=***${targetUid.slice(-4)} role=${role}`
+    );
+
+    return {
+      success: true,
+      uid: targetUid,
+      displayName: targetData.displayName ?? '',
+    };
+  }
+);
+
+// ── Phase 11: updateNoteMemberRole ───────────────────────────────────────────
+
+export const updateNoteMemberRole = onCall(
+  { region: 'asia-northeast1' },
+  async (request) => {
+    // 1. 認証チェック
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', '認証が必要です');
+    }
+    const uid = request.auth.uid;
+
+    // 2. バリデーション
+    const data = request.data as {
+      noteId?: unknown;
+      targetUid?: unknown;
+      role?: unknown;
+    };
+    if (typeof data.noteId !== 'string' || !data.noteId.trim()) {
+      throw new HttpsError('invalid-argument', 'noteId が不正です');
+    }
+    if (typeof data.targetUid !== 'string' || !data.targetUid.trim()) {
+      throw new HttpsError('invalid-argument', 'targetUid が不正です');
+    }
+    if (!['editor', 'viewer'].includes(data.role as string)) {
+      throw new HttpsError(
+        'invalid-argument',
+        'role は editor または viewer を指定してください'
+      );
+    }
+
+    const noteId = data.noteId.trim();
+    const targetUid = data.targetUid.trim();
+    const role = data.role as 'editor' | 'viewer';
+
+    const db = admin.firestore();
+
+    // 3. ノート取得・owner 権限確認
+    const noteSnap = await getOwnedNote(db, noteId, uid);
+    const noteData = noteSnap.data()!;
+
+    // 4. owner 自身のロール変更を拒否
+    if (targetUid === uid) {
+      throw new HttpsError(
+        'invalid-argument',
+        'owner 自身のロールは変更できません'
+      );
+    }
+
+    // 5. ターゲットがメンバーであるか確認
+    const members = noteData.members as Record<string, string> | undefined;
+    if (!members || !(targetUid in members)) {
+      throw new HttpsError('not-found', 'このユーザーはメンバーではありません');
+    }
+
+    // 6. owner は変更不可
+    if (members[targetUid] === 'owner') {
+      throw new HttpsError(
+        'invalid-argument',
+        'owner のロールは変更できません'
+      );
+    }
+
+    // 7. ロールを更新
+    await db.doc(`memory_notes/${noteId}`).update({
+      [`members.${targetUid}`]: role,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    console.log(
+      `[updateNoteMemberRole] noteId=${noteId} ownerUid=***${uid.slice(-4)} targetUid=***${targetUid.slice(-4)} newRole=${role}`
+    );
+
+    return { success: true };
+  }
+);
+
+// ── Phase 11: removeNoteMember ────────────────────────────────────────────────
+
+export const removeNoteMember = onCall(
+  { region: 'asia-northeast1' },
+  async (request) => {
+    // 1. 認証チェック
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', '認証が必要です');
+    }
+    const uid = request.auth.uid;
+
+    // 2. バリデーション
+    const data = request.data as {
+      noteId?: unknown;
+      targetUid?: unknown;
+    };
+    if (typeof data.noteId !== 'string' || !data.noteId.trim()) {
+      throw new HttpsError('invalid-argument', 'noteId が不正です');
+    }
+    if (typeof data.targetUid !== 'string' || !data.targetUid.trim()) {
+      throw new HttpsError('invalid-argument', 'targetUid が不正です');
+    }
+
+    const noteId = data.noteId.trim();
+    const targetUid = data.targetUid.trim();
+
+    const db = admin.firestore();
+
+    // 3. ノート取得・owner 権限確認
+    const noteSnap = await getOwnedNote(db, noteId, uid);
+    const noteData = noteSnap.data()!;
+
+    // 4. owner 自身の削除を拒否
+    if (targetUid === uid) {
+      throw new HttpsError(
+        'invalid-argument',
+        'owner 自身をメンバーから削除することはできません'
+      );
+    }
+
+    // 5. ターゲットがメンバーであるか確認
+    const members = noteData.members as Record<string, string> | undefined;
+    if (!members || !(targetUid in members)) {
+      throw new HttpsError('not-found', 'このユーザーはメンバーではありません');
+    }
+
+    // 6. FieldValue.delete() でフィールドを削除
+    await db.doc(`memory_notes/${noteId}`).update({
+      [`members.${targetUid}`]: admin.firestore.FieldValue.delete(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    console.log(
+      `[removeNoteMember] noteId=${noteId} ownerUid=***${uid.slice(-4)} targetUid=***${targetUid.slice(-4)}`
+    );
+
+    return { success: true };
   }
 );
