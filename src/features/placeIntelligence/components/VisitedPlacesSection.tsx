@@ -173,12 +173,21 @@ export function VisitedPlacesSection({ noteId, note, canEdit }: Props) {
     <View style={styles.container}>
       <View style={styles.sectionHeaderRow}>
         <Text style={styles.sectionLabel}>訪れた場所</Text>
-        <TouchableOpacity
-          onPress={() => router.push(`/(app)/notes/${noteId}/places`)}
-          hitSlop={8}
-        >
-          <Text style={styles.seeAllLink}>すべて見る</Text>
-        </TouchableOpacity>
+        <View style={styles.sectionHeaderLinks}>
+          <TouchableOpacity
+            onPress={() => router.push(`/(app)/notes/${noteId}/map`)}
+            hitSlop={8}
+          >
+            <Text style={styles.seeAllLink}>地図で見る</Text>
+          </TouchableOpacity>
+          <Text style={styles.sectionHeaderDivider}>·</Text>
+          <TouchableOpacity
+            onPress={() => router.push(`/(app)/notes/${noteId}/places`)}
+            hitSlop={8}
+          >
+            <Text style={styles.seeAllLink}>すべて見る</Text>
+          </TouchableOpacity>
+        </View>
       </View>
       <Text style={styles.descText}>
         近くの施設候補です。違う場合は、候補から選ぶか手動で入力してください。
@@ -255,6 +264,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 8,
+  },
+  sectionHeaderLinks: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  sectionHeaderDivider: {
+    fontSize: 13,
+    color: colors.textTertiary,
   },
   seeAllLink: {
     fontSize: 13,

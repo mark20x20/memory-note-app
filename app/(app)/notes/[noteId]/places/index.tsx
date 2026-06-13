@@ -113,7 +113,20 @@ export default function PlacesIndexScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      <ScreenHeader title="訪れた場所" onBack={() => router.back()} />
+      <ScreenHeader
+        title="訪れた場所"
+        onBack={() => router.back()}
+        rightElement={
+          groups.length > 0 ? (
+            <TouchableOpacity
+              onPress={() => router.push(`/(app)/notes/${noteId}/map`)}
+              hitSlop={8}
+            >
+              <Text style={styles.mapLinkText}>地図で見る</Text>
+            </TouchableOpacity>
+          ) : undefined
+        }
+      />
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
@@ -232,6 +245,12 @@ const styles = StyleSheet.create({
   },
   scroll: {
     paddingBottom: 48,
+  },
+  // 地図リンク
+  mapLinkText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.mapAccent,
   },
   // 再推定セクション
   enrichSection: {
