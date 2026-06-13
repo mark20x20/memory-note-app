@@ -133,6 +133,8 @@ export type PlaceGroupDoc = {
   startAt?: Timestamp | null;   // イベント開始時刻（最初の写真の takenAt）
   endAt?: Timestamp | null;     // イベント終了時刻（最後の写真の takenAt）
   sortOrder?: number;           // 時系列順（0, 1, 2, ...）
+  // Phase 12.5G-2: イベント内写真プレビュー（最大3枚の downloadURL）
+  photoPreviewURLs?: string[];
 
   // タイムスタンプ
   createdAt: Timestamp | null;

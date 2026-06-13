@@ -19,7 +19,11 @@ import { colors } from '@/shared/theme/colors';
 import type { NoteDoc } from '@/core/repositories/noteRepository';
 import type { PlaceGroupDoc } from '@/features/map/types';
 import { placeGroupRepository } from '@/core/repositories/placeGroupRepository';
-import { enrichNotePlacesCallable } from '@/features/placeIntelligence/api/placeFunctionsClient';
+import {
+  enrichNotePlacesCallable,
+  GROUPING_PRESETS,
+  type GroupingPreset,
+} from '@/features/placeIntelligence/api/placeFunctionsClient';
 
 // ── 型 ─────────────────────────────────────────────────────────────────────────
 
@@ -27,6 +31,14 @@ type Props = {
   noteId: string;
   note: NoteDoc;
   canEdit: boolean;
+};
+
+// ── 分割プリセット設定 ────────────────────────────────────────────────────────
+
+const PRESET_LABELS: Record<GroupingPreset, string> = {
+  compact:  '細かく',
+  standard: '標準',
+  relaxed:  'ゆったり',
 };
 
 // ── ヘルパー関数 ──────────────────────────────────────────────────────────────
@@ -63,6 +75,7 @@ export function VisitedPlacesSection({ noteId, note, canEdit }: Props) {
   const [groups, setGroups] = useState<PlaceGroupDoc[]>([]);
   const [enriching, setEnriching] = useState(false);
   const [enrichError, setEnrichError] = useState<string | null>(null);
+  const [groupingPreset, setGroupingPreset] = useState<GroupingPreset>('standard');
   const unsubRef = useRef<(() => void) | null>(null);
 
   // PlaceGroup をリアルタイム監視
@@ -81,7 +94,10 @@ export function VisitedPlacesSection({ noteId, note, canEdit }: Props) {
     setEnriching(true);
     setEnrichError(null);
     try {
-      await enrichNotePlacesCallable({ noteId });
+      await enrichNotePlacesCallable({
+        noteId,
+        grouping: GROUPING_PRESETS[groupingPreset],
+      });
     } catch (err: unknown) {
       const msg = err && typeof err === 'object' && 'message' in err
         ? String((err as { message: unknown }).message)
@@ -104,17 +120,23 @@ export function VisitedPlacesSection({ noteId, note, canEdit }: Props) {
             写真の GPS データをもとに、訪れた場所の候補を表示します。
           </Text>
           {canEdit ? (
-            <TouchableOpacity
-              style={[styles.primaryButton, enriching && styles.primaryButtonDisabled]}
-              onPress={handleEnrich}
-              disabled={enriching}
-            >
-              {enriching ? (
-                <ActivityIndicator size="small" color={colors.white} />
-              ) : (
-                <Text style={styles.primaryButtonText}>場所を推定する</Text>
-              )}
-            </TouchableOpacity>
+            <>
+              <GroupingPresetChips
+                selected={groupingPreset}
+                onChange={setGroupingPreset}
+              />
+              <TouchableOpacity
+                style={[styles.primaryButton, enriching && styles.primaryButtonDisabled]}
+                onPress={handleEnrich}
+                disabled={enriching}
+              >
+                {enriching ? (
+                  <ActivityIndicator size="small" color={colors.white} />
+                ) : (
+                  <Text style={styles.primaryButtonText}>場所を推定する</Text>
+                )}
+              </TouchableOpacity>
+            </>
           ) : null}
           {enrichError ? (
             <Text style={styles.errorText}>{enrichError}</Text>
@@ -228,21 +250,95 @@ export function VisitedPlacesSection({ noteId, note, canEdit }: Props) {
       ) : null}
 
       {canEdit ? (
-        <TouchableOpacity
-          style={[styles.outlineButton, styles.outlineButtonSmall, enriching && styles.outlineButtonDisabled]}
-          onPress={handleEnrich}
-          disabled={enriching}
-        >
-          {enriching ? (
-            <ActivityIndicator size="small" color={colors.mapAccent} />
-          ) : (
-            <Text style={styles.outlineButtonText}>候補を再取得</Text>
-          )}
-        </TouchableOpacity>
+        <>
+          <GroupingPresetChips
+            selected={groupingPreset}
+            onChange={setGroupingPreset}
+          />
+          <TouchableOpacity
+            style={[styles.outlineButton, styles.outlineButtonSmall, enriching && styles.outlineButtonDisabled]}
+            onPress={handleEnrich}
+            disabled={enriching}
+          >
+            {enriching ? (
+              <ActivityIndicator size="small" color={colors.mapAccent} />
+            ) : (
+              <Text style={styles.outlineButtonText}>写真のまとめ方を変えて再推定</Text>
+            )}
+          </TouchableOpacity>
+        </>
       ) : null}
     </View>
   );
 }
+
+// ── GroupingPresetChips ───────────────────────────────────────────────────────
+
+function GroupingPresetChips({
+  selected,
+  onChange,
+}: {
+  selected: GroupingPreset;
+  onChange: (p: GroupingPreset) => void;
+}) {
+  const presets: GroupingPreset[] = ['compact', 'standard', 'relaxed'];
+  return (
+    <View style={presetStyles.container}>
+      <Text style={presetStyles.label}>写真のまとめ方</Text>
+      <View style={presetStyles.chipRow}>
+        {presets.map((p) => (
+          <TouchableOpacity
+            key={p}
+            style={[presetStyles.chip, selected === p && presetStyles.chipSelected]}
+            onPress={() => onChange(p)}
+            activeOpacity={0.7}
+          >
+            <Text style={[presetStyles.chipText, selected === p && presetStyles.chipTextSelected]}>
+              {PRESET_LABELS[p]}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+const presetStyles = StyleSheet.create({
+  container: {
+    marginBottom: 10,
+    marginTop: 4,
+  },
+  label: {
+    fontSize: 11,
+    color: colors.textTertiary,
+    marginBottom: 6,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  chip: {
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    backgroundColor: colors.surface,
+  },
+  chipSelected: {
+    borderColor: colors.mapAccent,
+    backgroundColor: colors.mapAccentLight,
+  },
+  chipText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: colors.textSecondary,
+  },
+  chipTextSelected: {
+    color: colors.mapAccent,
+    fontWeight: '600',
+  },
+});
 
 // ── スタイル ──────────────────────────────────────────────────────────────────
 

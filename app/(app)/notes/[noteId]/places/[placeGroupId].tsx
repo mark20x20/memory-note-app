@@ -14,8 +14,10 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import MapView, { Marker, type Region } from 'react-native-maps';
 import { router, useLocalSearchParams } from 'expo-router';
 import { ScreenHeader } from '@/shared/components/ui';
 import { colors } from '@/shared/theme/colors';
@@ -25,6 +27,12 @@ import { placeGroupRepository } from '@/core/repositories/placeGroupRepository';
 import { selectPlaceCandidateCallable } from '@/features/placeIntelligence/api/placeFunctionsClient';
 import { canEdit } from '@/features/memoryNotes/utils/permissions';
 import type { PlaceGroupDoc, PlaceCandidateDoc } from '@/features/map/types';
+
+// ── 候補地図 定数 ─────────────────────────────────────────────────────────────
+
+const SCREEN_WIDTH = Dimensions.get('window').width;
+const CANDIDATE_MAP_HEIGHT = 200;
+const DEFAULT_DELTA = 0.008;
 
 // ── 候補カテゴリ分類 ──────────────────────────────────────────────────────────
 
@@ -93,6 +101,124 @@ function getTypeLabels(types: string[]): string {
   const labels = types.slice(0, 2).map((t) => labelMap[t] ?? t).filter(Boolean);
   return labels.join(' · ');
 }
+
+// ── 候補地図ヘルパー ──────────────────────────────────────────────────────────
+
+/** lat/lng が有効な候補だけを抽出する */
+function getCandidatesWithLocation(
+  candidates: PlaceCandidateDoc[]
+): (PlaceCandidateDoc & { latitude: number; longitude: number })[] {
+  return candidates.filter(
+    (c): c is PlaceCandidateDoc & { latitude: number; longitude: number } =>
+      typeof c.latitude === 'number' &&
+      typeof c.longitude === 'number' &&
+      !Number.isNaN(c.latitude) &&
+      !Number.isNaN(c.longitude)
+  );
+}
+
+/** 候補の座標群から MapView の初期 Region を計算する */
+function calcCandidateRegion(
+  candidates: { latitude: number; longitude: number }[],
+  groupLat: number,
+  groupLng: number
+): Region {
+  const allLats = [groupLat, ...candidates.map((c) => c.latitude)];
+  const allLngs = [groupLng, ...candidates.map((c) => c.longitude)];
+  const minLat = Math.min(...allLats);
+  const maxLat = Math.max(...allLats);
+  const minLng = Math.min(...allLngs);
+  const maxLng = Math.max(...allLngs);
+  const padLat = Math.max((maxLat - minLat) * 0.4, DEFAULT_DELTA / 2);
+  const padLng = Math.max((maxLng - minLng) * 0.4, DEFAULT_DELTA / 2);
+  return {
+    latitude: (minLat + maxLat) / 2,
+    longitude: (minLng + maxLng) / 2,
+    latitudeDelta: maxLat - minLat + padLat,
+    longitudeDelta: maxLng - minLng + padLng,
+  };
+}
+
+/** 候補用番号ピン（候補リストの番号と一致させる） */
+function CandidateMarkerView({
+  number,
+  selected,
+}: {
+  number: number;
+  selected: boolean;
+}) {
+  return (
+    <View style={candidateMarkerStyles.wrapper}>
+      <View
+        style={[
+          candidateMarkerStyles.badge,
+          selected
+            ? candidateMarkerStyles.badgeSelected
+            : candidateMarkerStyles.badgeDefault,
+        ]}
+      >
+        <Text
+          style={[
+            candidateMarkerStyles.text,
+            selected
+              ? candidateMarkerStyles.textSelected
+              : candidateMarkerStyles.textDefault,
+          ]}
+        >
+          {number}
+        </Text>
+      </View>
+      <View
+        style={[
+          candidateMarkerStyles.stem,
+          selected ? candidateMarkerStyles.stemSelected : candidateMarkerStyles.stemDefault,
+        ]}
+      />
+    </View>
+  );
+}
+
+const BADGE_W = 26;
+const BADGE_H = 22;
+const STEM_H = 5;
+
+const candidateMarkerStyles = StyleSheet.create({
+  wrapper: { alignItems: 'center' },
+  badge: {
+    width: BADGE_W,
+    height: BADGE_H,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 3,
+  },
+  badgeDefault: {
+    backgroundColor: colors.white,
+    borderWidth: 1.5,
+    borderColor: colors.mapAccent,
+  },
+  badgeSelected: {
+    backgroundColor: colors.mapAccent,
+  },
+  text: { fontSize: 10, fontWeight: '700' },
+  textDefault: { color: colors.mapAccent },
+  textSelected: { color: colors.white },
+  stem: {
+    width: 0,
+    height: 0,
+    borderLeftWidth: STEM_H / 2,
+    borderRightWidth: STEM_H / 2,
+    borderTopWidth: STEM_H,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+  },
+  stemDefault: { borderTopColor: colors.mapAccent },
+  stemSelected: { borderTopColor: colors.mapAccent },
+});
 
 // ── コンポーネント ────────────────────────────────────────────────────────────
 
@@ -182,26 +308,47 @@ export default function PlaceGroupDetailScreen() {
     );
   }
 
-  // 候補を priority / other に分類
+  // 候補を priority / other に分類（全 candidates のインデックスで番号付け）
   const priorityCandidates = candidates.filter(isPriorityCandidate);
   const otherCandidates = candidates.filter((c) => !isPriorityCandidate(c));
+
+  // 候補地図用: lat/lng がある候補のみ
+  const candidatesWithLoc = getCandidatesWithLocation(candidates);
+  const candidateMapRegion =
+    candidatesWithLoc.length > 0
+      ? calcCandidateRegion(candidatesWithLoc, group.latitude, group.longitude)
+      : {
+          latitude: group.latitude,
+          longitude: group.longitude,
+          latitudeDelta: DEFAULT_DELTA,
+          longitudeDelta: DEFAULT_DELTA,
+        };
 
   const isSelected = (c: PlaceCandidateDoc) => c.id === group.selectedCandidateId;
 
   function renderCandidate(candidate: PlaceCandidateDoc) {
     const selected = isSelected(candidate);
     const isLoading = selecting === candidate.id;
+    // 候補地図と番号を合わせる（candidates 配列全体の index）
+    const globalIdx = candidates.findIndex((x) => x.id === candidate.id);
     return (
       <View
         key={candidate.id}
         style={[styles.candidateCard, selected && styles.candidateCardSelected]}
       >
         <View style={styles.candidateInfo}>
-          {selected ? (
-            <View style={styles.selectedBadge}>
-              <Text style={styles.selectedBadgeText}>選択中</Text>
+          <View style={styles.candidateHeader}>
+            <View style={[styles.candidateNumBadge, selected && styles.candidateNumBadgeSelected]}>
+              <Text style={[styles.candidateNumText, selected && styles.candidateNumTextSelected]}>
+                #{globalIdx + 1}
+              </Text>
             </View>
-          ) : null}
+            {selected ? (
+              <View style={styles.selectedBadge}>
+                <Text style={styles.selectedBadgeText}>選択中</Text>
+              </View>
+            ) : null}
+          </View>
           <Text style={styles.candidateName}>{candidate.name}</Text>
           <View style={styles.candidateMeta}>
             {candidate.distanceMeters != null ? (
@@ -267,6 +414,47 @@ export default function PlaceGroupDetailScreen() {
             </View>
           </View>
         </View>
+
+        {/* ── 候補地図 ── */}
+        {candidatesWithLoc.length > 0 ? (
+          <View style={styles.candidateMapSection}>
+            <Text style={styles.groupTitle}>候補地図</Text>
+            <Text style={styles.candidateMapDesc}>候補の位置を地図で確認</Text>
+            <View style={styles.candidateMapContainer}>
+              <MapView
+                style={{ width: SCREEN_WIDTH - 40, height: CANDIDATE_MAP_HEIGHT }}
+                initialRegion={candidateMapRegion}
+                showsUserLocation={false}
+                showsCompass={false}
+                scrollEnabled
+                zoomEnabled
+              >
+                {/* PlaceGroup の代表点（グレーピン） */}
+                <Marker
+                  coordinate={{ latitude: group.latitude, longitude: group.longitude }}
+                  title="撮影地点"
+                  pinColor={colors.textTertiary}
+                />
+                {/* 候補ピン（番号は candidates 配列全体の index） */}
+                {candidatesWithLoc.map((c) => {
+                  const globalIdx = candidates.findIndex((x) => x.id === c.id);
+                  return (
+                    <Marker
+                      key={c.id}
+                      coordinate={{ latitude: c.latitude, longitude: c.longitude }}
+                      title={`#${globalIdx + 1} ${c.name}`}
+                    >
+                      <CandidateMarkerView
+                        number={globalIdx + 1}
+                        selected={c.id === group.selectedCandidateId}
+                      />
+                    </Marker>
+                  );
+                })}
+              </MapView>
+            </View>
+          </View>
+        ) : null}
 
         {/* ── 候補なし ── */}
         {candidates.length === 0 ? (
@@ -389,6 +577,22 @@ const styles = StyleSheet.create({
   pendingChip: {
     color: colors.warning,
   },
+  // 候補地図セクション
+  candidateMapSection: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+  },
+  candidateMapDesc: {
+    fontSize: 12,
+    color: colors.textTertiary,
+    marginBottom: 8,
+  },
+  candidateMapContainer: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
   // 候補グループタイトル
   groupTitle: {
     fontSize: 13,
@@ -396,7 +600,7 @@ const styles = StyleSheet.create({
     color: colors.textTertiary,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
-    marginBottom: 10,
+    marginBottom: 4,
   },
   // 候補カード
   candidateCard: {
@@ -417,6 +621,32 @@ const styles = StyleSheet.create({
   candidateInfo: {
     flex: 1,
     gap: 3,
+  },
+  candidateHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 2,
+  },
+  candidateNumBadge: {
+    backgroundColor: colors.mapAccentLight,
+    borderWidth: 1,
+    borderColor: colors.mapAccent,
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
+  candidateNumBadgeSelected: {
+    backgroundColor: colors.mapAccent,
+    borderColor: colors.mapAccent,
+  },
+  candidateNumText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.mapAccent,
+  },
+  candidateNumTextSelected: {
+    color: colors.white,
   },
   selectedBadge: {
     alignSelf: 'flex-start',

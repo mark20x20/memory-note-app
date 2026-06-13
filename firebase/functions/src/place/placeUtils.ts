@@ -162,27 +162,37 @@ function resolvePhotoDate(
   return null;
 }
 
-/** 距離しきい値: 80m を超えたら別イベント */
-const EVENT_DISTANCE_THRESHOLD_METERS = 80;
+/** デフォルト距離しきい値: 80m */
+const DEFAULT_DISTANCE_THRESHOLD_METERS = 80;
 
-/** 時間しきい値: 90分を超えたら別イベント */
-const EVENT_TIME_THRESHOLD_MS = 90 * 60 * 1000;
+/** デフォルト時間しきい値: 90分 */
+const DEFAULT_TIME_THRESHOLD_MS = 90 * 60 * 1000;
+
+/** photoPreviewURLs として保存する最大枚数 */
+const MAX_PREVIEW_URLS = 3;
 
 /**
  * GPS 写真を takenAt + 距離でイベント分割し、LocalPlaceGroup[] を返す。
  *
+ * Phase 12.5G-2: options でしきい値を上書き可能にした。
+ *
  * アルゴリズム:
  * 1. takenAt がある写真を takenAt 昇順に並べる
  * 2. takenAt がない写真は末尾に createdAt 昇順で追加
- * 3. 前の写真との距離 > 80m または時間差 > 90分 → 新イベント
+ * 3. 前の写真との距離 > distanceGapMeters または時間差 > timeGapMs → 新イベント
  * 4. 各イベントの代表座標は含まれる写真の平均
  * 5. sortOrder = 0, 1, 2, ...（最大 MAX_PLACE_GROUPS 件）
  * 6. coverPhotoURL = 最初の写真の downloadURL
+ * 7. photoPreviewURLs = 最大 MAX_PREVIEW_URLS 枚の downloadURL
  */
 export function groupPhotosByTimeAndDistance(
-  photos: Array<PhotoData & { latitude: number; longitude: number }>
+  photos: Array<PhotoData & { latitude: number; longitude: number }>,
+  options?: { timeGapMs?: number; distanceGapMeters?: number }
 ): LocalPlaceGroup[] {
   if (photos.length === 0) return [];
+
+  const distanceThreshold = options?.distanceGapMeters ?? DEFAULT_DISTANCE_THRESHOLD_METERS;
+  const timeThreshold = options?.timeGapMs ?? DEFAULT_TIME_THRESHOLD_MS;
 
   // takenAt を解決して仮 Date を付与
   type PhotoWithDate = typeof photos[0] & { _sortDate: Date | null };
@@ -206,6 +216,7 @@ export function groupPhotosByTimeAndDistance(
     sumLng: number;
     count: number;
     photoIds: string[];
+    previewURLs: string[];
     coverPhotoURL: string | null;
     startAt: Date | null;
     endAt: Date | null;
@@ -225,9 +236,9 @@ export function groupPhotosByTimeAndDistance(
         ? Math.abs(date.getTime() - last.lastDate.getTime())
         : 0;
 
-      const tooFar = distM > EVENT_DISTANCE_THRESHOLD_METERS;
+      const tooFar = distM > distanceThreshold;
       const tooLong = date && last.lastDate
-        ? timeDiffMs > EVENT_TIME_THRESHOLD_MS
+        ? timeDiffMs > timeThreshold
         : false;
 
       if (!tooFar && !tooLong) {
@@ -236,6 +247,9 @@ export function groupPhotosByTimeAndDistance(
         last.sumLat += photo.latitude;
         last.sumLng += photo.longitude;
         last.photoIds.push(photo.id);
+        if (photo.downloadURL && last.previewURLs.length < MAX_PREVIEW_URLS) {
+          last.previewURLs.push(photo.downloadURL);
+        }
         last.lastLat = photo.latitude;
         last.lastLng = photo.longitude;
         if (date) last.endAt = date;
@@ -246,11 +260,14 @@ export function groupPhotosByTimeAndDistance(
     }
 
     if (!placed) {
+      const initialPreviews: string[] = [];
+      if (photo.downloadURL) initialPreviews.push(photo.downloadURL);
       groups.push({
         sumLat: photo.latitude,
         sumLng: photo.longitude,
         count: 1,
         photoIds: [photo.id],
+        previewURLs: initialPreviews,
         coverPhotoURL: photo.downloadURL ?? null,
         startAt: date,
         endAt: date,
@@ -268,6 +285,7 @@ export function groupPhotosByTimeAndDistance(
     photoIds: g.photoIds,
     photoCount: g.photoIds.length,
     coverPhotoURL: g.coverPhotoURL,
+    photoPreviewURLs: g.previewURLs,
     startAt: g.startAt,
     endAt: g.endAt,
     sortOrder: idx,

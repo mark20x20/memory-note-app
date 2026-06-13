@@ -171,16 +171,16 @@ export default function NoteDetailScreen() {
           </View>
         ) : null}
 
-        {/* ── 訪れた場所セクション（Phase 12.5E 実装） ── */}
-        <VisitedPlacesSection
+        {/* ── この日の流れ（Phase 12.5G-2: 主役に格上げ） ── */}
+        <VisitTimelineSection
           noteId={noteId}
-          note={note}
           canEdit={!!userCanEdit}
         />
 
-        {/* ── この日の流れ（Phase 12.5G-1 実装） ── */}
-        <VisitTimelineSection
+        {/* ── 訪れた場所セクション（場所推定ボタン + サマリー） ── */}
+        <VisitedPlacesSection
           noteId={noteId}
+          note={note}
           canEdit={!!userCanEdit}
         />
 

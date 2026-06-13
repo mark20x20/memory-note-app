@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
+  Image,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -21,9 +22,21 @@ import { colors } from '@/shared/theme/colors';
 import { useAuth } from '@/core/auth/AuthContext';
 import { useNoteDetail } from '@/features/memoryNotes/hooks/useNoteDetail';
 import { placeGroupRepository } from '@/core/repositories/placeGroupRepository';
-import { enrichNotePlacesCallable } from '@/features/placeIntelligence/api/placeFunctionsClient';
+import {
+  enrichNotePlacesCallable,
+  GROUPING_PRESETS,
+  type GroupingPreset,
+} from '@/features/placeIntelligence/api/placeFunctionsClient';
 import { canEdit } from '@/features/memoryNotes/utils/permissions';
 import type { PlaceGroupDoc } from '@/features/map/types';
+
+// ── 分割プリセット ─────────────────────────────────────────────────────────────
+
+const PRESET_LABELS: Record<GroupingPreset, string> = {
+  compact:  '細かく',
+  standard: '標準',
+  relaxed:  'ゆったり',
+};
 
 // ── ヘルパー ──────────────────────────────────────────────────────────────────
 
@@ -78,6 +91,7 @@ export default function PlacesIndexScreen() {
   const [groupsLoading, setGroupsLoading] = useState(true);
   const [enriching, setEnriching] = useState(false);
   const [enrichError, setEnrichError] = useState<string | null>(null);
+  const [groupingPreset, setGroupingPreset] = useState<GroupingPreset>('standard');
   const unsubRef = useRef<(() => void) | null>(null);
 
   const userCanEdit = uid && note ? canEdit(note, uid) : false;
@@ -101,7 +115,10 @@ export default function PlacesIndexScreen() {
     setEnriching(true);
     setEnrichError(null);
     try {
-      await enrichNotePlacesCallable({ noteId });
+      await enrichNotePlacesCallable({
+        noteId,
+        grouping: GROUPING_PRESETS[groupingPreset],
+      });
     } catch (err: unknown) {
       const msg = err && typeof err === 'object' && 'message' in err
         ? String((err as { message: unknown }).message)
@@ -143,9 +160,25 @@ export default function PlacesIndexScreen() {
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
-        {/* ── 再推定ボタン（owner/editor のみ） ── */}
+        {/* ── 推定ボタン + プリセット（owner/editor のみ） ── */}
         {userCanEdit ? (
           <View style={styles.enrichSection}>
+            {/* 分割プリセット */}
+            <Text style={styles.presetLabel}>写真のまとめ方</Text>
+            <View style={styles.presetChipRow}>
+              {(['compact', 'standard', 'relaxed'] as GroupingPreset[]).map((p) => (
+                <TouchableOpacity
+                  key={p}
+                  style={[styles.presetChip, groupingPreset === p && styles.presetChipSelected]}
+                  onPress={() => setGroupingPreset(p)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.presetChipText, groupingPreset === p && styles.presetChipTextSelected]}>
+                    {PRESET_LABELS[p]}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
             <TouchableOpacity
               style={[styles.enrichButton, enriching && styles.enrichButtonDisabled]}
               onPress={handleEnrich}
@@ -212,12 +245,31 @@ export default function PlacesIndexScreen() {
                     {getCategoryLabel(group.category)}
                   </Text>
 
+                  {/* 写真サムネイル */}
+                  {(() => {
+                    const urls = group.photoPreviewURLs && group.photoPreviewURLs.length > 0
+                      ? group.photoPreviewURLs.slice(0, 3)
+                      : group.coverPhotoURL ? [group.coverPhotoURL] : [];
+                    return urls.length > 0 ? (
+                      <View style={styles.thumbRow}>
+                        {urls.map((url, ti) => (
+                          <Image
+                            key={ti}
+                            source={{ uri: url }}
+                            style={styles.thumb}
+                            resizeMode="cover"
+                          />
+                        ))}
+                      </View>
+                    ) : null;
+                  })()}
+
                   <View style={styles.groupMeta}>
                     {group.photoCount > 0 ? (
                       <Text style={styles.groupMetaItem}>写真 {group.photoCount}枚</Text>
                     ) : null}
                     {!isConfirmed && userCanEdit ? (
-                      <Text style={styles.groupMetaAction}>→ 候補を確認</Text>
+                      <Text style={styles.groupMetaAction}>→ 場所を確認・編集</Text>
                     ) : null}
                     {!isConfirmed && !userCanEdit ? (
                       <Text style={styles.groupMetaUnconfirmed}>未確認</Text>
@@ -272,11 +324,42 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.mapAccent,
   },
-  // 再推定セクション
+  // 推定セクション
   enrichSection: {
     paddingHorizontal: 20,
     paddingTop: 20,
     gap: 8,
+  },
+  // 分割プリセット
+  presetLabel: {
+    fontSize: 11,
+    color: colors.textTertiary,
+    marginBottom: 2,
+  },
+  presetChipRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  presetChip: {
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    backgroundColor: colors.surface,
+  },
+  presetChipSelected: {
+    borderColor: colors.mapAccent,
+    backgroundColor: colors.mapAccentLight,
+  },
+  presetChipText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: colors.textSecondary,
+  },
+  presetChipTextSelected: {
+    color: colors.mapAccent,
+    fontWeight: '600',
   },
   enrichButton: {
     backgroundColor: colors.mapAccent,
@@ -380,7 +463,19 @@ const styles = StyleSheet.create({
   groupCategory: {
     fontSize: 13,
     color: colors.textSecondary,
-    marginBottom: 8,
+    marginBottom: 6,
+  },
+  // 写真サムネイル
+  thumbRow: {
+    flexDirection: 'row',
+    gap: 4,
+    marginBottom: 6,
+  },
+  thumb: {
+    width: 48,
+    height: 48,
+    borderRadius: 6,
+    backgroundColor: colors.border,
   },
   groupMeta: {
     flexDirection: 'row',

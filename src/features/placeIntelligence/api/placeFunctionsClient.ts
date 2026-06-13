@@ -30,9 +30,20 @@ function toCallableError(err: unknown): CallableError {
 
 // ── enrichNotePlaces ──────────────────────────────────────────────────────────
 
+// Phase 12.5G-2: イベント分割プリセット
+export type GroupingPreset = 'compact' | 'standard' | 'relaxed';
+
+export const GROUPING_PRESETS = {
+  compact:  { timeGapMinutes: 30,  distanceGapMeters: 50  },
+  standard: { timeGapMinutes: 90,  distanceGapMeters: 80  },
+  relaxed:  { timeGapMinutes: 180, distanceGapMeters: 120 },
+} as const;
+
 export type EnrichNotePlacesInput = {
   noteId: string;
   forceRefresh?: boolean;
+  /** Phase 12.5G-2: イベント分割しきい値（省略時はサーバーデフォルト 90分/80m） */
+  grouping?: { timeGapMinutes?: number; distanceGapMeters?: number };
 };
 
 export type EnrichNotePlacesResult = {

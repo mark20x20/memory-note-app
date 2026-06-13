@@ -254,12 +254,30 @@ export const enrichNotePlaces = onCall(
     const uid = request.auth.uid;
 
     // 2. バリデーション
-    const data = request.data as { noteId?: unknown; forceRefresh?: unknown };
+    const data = request.data as {
+      noteId?: unknown;
+      forceRefresh?: unknown;
+      grouping?: { timeGapMinutes?: unknown; distanceGapMeters?: unknown };
+    };
     if (typeof data.noteId !== 'string' || !data.noteId.trim()) {
       throw new HttpsError('invalid-argument', 'noteId が不正です');
     }
     const noteId = data.noteId.trim();
     const forceRefresh = data.forceRefresh === true;
+
+    // Phase 12.5G-2: grouping パラメータを読み取り、安全な範囲に clamp する
+    // timeGapMinutes: 15〜360, distanceGapMeters: 20〜500
+    const rawGrouping = data.grouping;
+    const timeGapMinutes = rawGrouping?.timeGapMinutes != null && typeof rawGrouping.timeGapMinutes === 'number'
+      ? Math.min(360, Math.max(15, rawGrouping.timeGapMinutes))
+      : 90;
+    const distanceGapMeters = rawGrouping?.distanceGapMeters != null && typeof rawGrouping.distanceGapMeters === 'number'
+      ? Math.min(500, Math.max(20, rawGrouping.distanceGapMeters))
+      : 80;
+    const groupingOptions = {
+      timeGapMs: timeGapMinutes * 60 * 1000,
+      distanceGapMeters,
+    };
 
     const db = admin.firestore();
     const noteSnap = await assertOwnerOrEditor(db, noteId, uid);
@@ -336,11 +354,10 @@ export const enrichNotePlaces = onCall(
 
       // 8. GPS 写真を時刻 + 距離でイベント分割（最大 MAX_PLACE_GROUPS 件）
       // Phase 12.5G-1: groupNearbyLocations から groupPhotosByTimeAndDistance に変更
-      // takenAt がある写真は時系列順、ない写真は末尾に配置。
-      // 距離 80m 超 or 時間差 90分超で新イベントに分割。
-      const localGroups = groupPhotosByTimeAndDistance(gpsPhotos);
+      // Phase 12.5G-2: groupingOptions でしきい値を指定可能
+      const localGroups = groupPhotosByTimeAndDistance(gpsPhotos, groupingOptions);
       console.log(
-        `[enrichNotePlaces] noteId=${noteId.slice(0, 8)} eventGroups=${localGroups.length} strategy=time+distance`
+        `[enrichNotePlaces] noteId=${noteId.slice(0, 8)} eventGroups=${localGroups.length} timeGapMin=${timeGapMinutes} distGapM=${distanceGapMeters}`
       );
 
       // 9. APIキー取得
@@ -426,6 +443,8 @@ export const enrichNotePlaces = onCall(
           endAt: localGroup.endAt
             ? admin.firestore.Timestamp.fromDate(localGroup.endAt)
             : null,
+          // Phase 12.5G-2: 写真プレビューURL（最大3枚）
+          photoPreviewURLs: localGroup.photoPreviewURLs ?? [],
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         };

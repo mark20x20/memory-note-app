@@ -43,6 +43,8 @@ export type PlaceGroupDoc = {
   startAt?: Timestamp | null;
   endAt?: Timestamp | null;
   sortOrder?: number;
+  // Phase 12.5G-2: イベント内写真プレビュー（最大3枚の downloadURL）
+  photoPreviewURLs?: string[];
   createdAt: Timestamp | null;
   updatedAt: Timestamp | null;
 };
@@ -85,6 +87,8 @@ export type LocalPlaceGroup = {
   startAt?: Date | null;
   endAt?: Date | null;
   sortOrder?: number;
+  // Phase 12.5G-2: イベント内写真プレビュー（最大3枚の downloadURL）
+  photoPreviewURLs?: string[];
 };
 
 // ── Google Places API (New) レスポンス型 ────────────────────────────────────────

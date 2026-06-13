@@ -1,13 +1,11 @@
 // Phase 12.5G-1: この日の流れ — 訪問イベントタイムラインコンポーネント
-//
-// ノート詳細画面の「訪れた場所セクション」の下に挿入する。
-// PlaceGroup を時系列順（sortOrder / startAt）で表示し、
-// 時刻・場所名・写真枚数・確認状態を一覧できる。
+// Phase 12.5G-2: 写真サムネイル表示・「場所を確認・編集」ボタン追加
 
 import { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
+  Image,
   StyleSheet,
   TouchableOpacity,
 } from 'react-native';
@@ -54,6 +52,15 @@ function getCategoryLabel(category: string): string {
   return map[category] ?? category;
 }
 
+/** サムネイルに使う URL を最大3枚返す（photoPreviewURLs → coverPhotoURL の順） */
+function getThumbnailURLs(group: PlaceGroupDoc): string[] {
+  if (group.photoPreviewURLs && group.photoPreviewURLs.length > 0) {
+    return group.photoPreviewURLs.slice(0, 3);
+  }
+  if (group.coverPhotoURL) return [group.coverPhotoURL];
+  return [];
+}
+
 // ── コンポーネント ────────────────────────────────────────────────────────────
 
 export function VisitTimelineSection({ noteId, canEdit }: Props) {
@@ -69,7 +76,6 @@ export function VisitTimelineSection({ noteId, canEdit }: Props) {
     return () => unsubRef.current?.();
   }, [noteId]);
 
-  // PlaceGroup がなければ非表示
   if (groups.length === 0) return null;
 
   return (
@@ -81,6 +87,7 @@ export function VisitTimelineSection({ noteId, canEdit }: Props) {
           const timeStr = formatStartTime(group);
           const isConfirmed = group.userConfirmed;
           const canNavigate = canEdit || isConfirmed;
+          const thumbURLs = getThumbnailURLs(group);
 
           return (
             <TouchableOpacity
@@ -102,7 +109,7 @@ export function VisitTimelineSection({ noteId, canEdit }: Props) {
                 {!isLast ? <View style={styles.timelineLine} /> : null}
               </View>
 
-              {/* 右: 時刻 + 場所名 + メタ */}
+              {/* 右: 時刻・場所名・写真サムネイル・メタ */}
               <View style={styles.timelineRight}>
                 {timeStr ? (
                   <Text style={styles.timelineTime}>{timeStr}</Text>
@@ -110,15 +117,42 @@ export function VisitTimelineSection({ noteId, canEdit }: Props) {
                 <Text style={styles.timelineLabel} numberOfLines={1}>
                   {group.label}
                 </Text>
-                <View style={styles.timelineMetaRow}>
-                  <Text style={styles.timelineMeta}>
-                    {getCategoryLabel(group.category)}
-                    {group.photoCount > 0 ? ` · 写真${group.photoCount}枚` : ''}
-                  </Text>
+                <Text style={styles.timelineMeta}>
+                  {getCategoryLabel(group.category)}
+                  {group.photoCount > 0 ? ` · 写真${group.photoCount}枚` : ''}
+                </Text>
+
+                {/* 写真サムネイル */}
+                {thumbURLs.length > 0 ? (
+                  <View style={styles.thumbRow}>
+                    {thumbURLs.map((url, ti) => (
+                      <Image
+                        key={ti}
+                        source={{ uri: url }}
+                        style={styles.thumb}
+                        resizeMode="cover"
+                      />
+                    ))}
+                  </View>
+                ) : null}
+
+                {/* バッジ + 確認ボタン */}
+                <View style={styles.bottomRow}>
                   {!isConfirmed ? (
                     <View style={styles.unconfirmedBadge}>
                       <Text style={styles.unconfirmedBadgeText}>要確認</Text>
                     </View>
+                  ) : (
+                    <View style={styles.confirmedBadge}>
+                      <Text style={styles.confirmedBadgeText}>確認済み</Text>
+                    </View>
+                  )}
+                  {canNavigate ? (
+                    <Text style={styles.actionLink}>
+                      {canEdit
+                        ? isConfirmed ? '場所を変更 →' : '場所を確認・編集 →'
+                        : '詳細を見る →'}
+                    </Text>
                   ) : null}
                 </View>
               </View>
@@ -192,8 +226,7 @@ const styles = StyleSheet.create({
   timelineRight: {
     flex: 1,
     paddingLeft: 10,
-    justifyContent: 'center',
-    gap: 2,
+    gap: 3,
   },
   timelineTime: {
     fontSize: 12,
@@ -201,29 +234,58 @@ const styles = StyleSheet.create({
     color: colors.mapAccent,
   },
   timelineLabel: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600',
     color: colors.textPrimary,
-  },
-  timelineMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 2,
   },
   timelineMeta: {
     fontSize: 12,
     color: colors.textSecondary,
   },
+  // 写真サムネイル行
+  thumbRow: {
+    flexDirection: 'row',
+    gap: 4,
+    marginTop: 6,
+  },
+  thumb: {
+    width: 52,
+    height: 52,
+    borderRadius: 6,
+    backgroundColor: colors.border,
+  },
+  // バッジ + アクション行
+  bottomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
   unconfirmedBadge: {
     backgroundColor: colors.warning + '22',
     borderRadius: 6,
-    paddingHorizontal: 6,
+    paddingHorizontal: 7,
     paddingVertical: 2,
   },
   unconfirmedBadgeText: {
     fontSize: 10,
     fontWeight: '600',
     color: colors.warning,
+  },
+  confirmedBadge: {
+    backgroundColor: colors.success + '22',
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  confirmedBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: colors.success,
+  },
+  actionLink: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: colors.mapAccent,
   },
 });
