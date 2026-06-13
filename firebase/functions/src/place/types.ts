@@ -39,6 +39,10 @@ export type PlaceGroupDoc = {
   userConfirmed: boolean;
   userEditedLabel?: string;
   source: PlaceGroupSource;
+  // Phase 12.5G-1: 訪問イベント時刻・順序
+  startAt?: Timestamp | null;
+  endAt?: Timestamp | null;
+  sortOrder?: number;
   createdAt: Timestamp | null;
   updatedAt: Timestamp | null;
 };
@@ -66,6 +70,9 @@ export type PhotoData = {
   latitude?: number | null;
   longitude?: number | null;
   downloadURL?: string | null;
+  // Phase 12.5G-1: 撮影時刻（ISO 8601 文字列 or Firestore Timestamp）
+  takenAt?: string | null | { toDate(): Date };
+  createdAt?: string | null | { toDate(): Date };
 };
 
 export type LocalPlaceGroup = {
@@ -74,6 +81,10 @@ export type LocalPlaceGroup = {
   photoIds: string[];
   photoCount: number;
   coverPhotoURL?: string | null;
+  // Phase 12.5G-1: 訪問イベント情報
+  startAt?: Date | null;
+  endAt?: Date | null;
+  sortOrder?: number;
 };
 
 // ── Google Places API (New) レスポンス型 ────────────────────────────────────────

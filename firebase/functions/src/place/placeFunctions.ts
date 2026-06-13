@@ -15,6 +15,7 @@ import { calculatePreliminaryConfidence, mapToPlaceCategory } from './placeScori
 import {
   extractGpsPhotos,
   groupNearbyLocations,
+  groupPhotosByTimeAndDistance,
   haversineDistance,
   isCacheValid,
   isFoodRelatedNote,
@@ -333,8 +334,14 @@ export const enrichNotePlaces = onCall(
         };
       }
 
-      // 8. GPS 写真をグループ化（最大 MAX_PLACE_GROUPS 件）
-      const localGroups = groupNearbyLocations(gpsPhotos);
+      // 8. GPS 写真を時刻 + 距離でイベント分割（最大 MAX_PLACE_GROUPS 件）
+      // Phase 12.5G-1: groupNearbyLocations から groupPhotosByTimeAndDistance に変更
+      // takenAt がある写真は時系列順、ない写真は末尾に配置。
+      // 距離 80m 超 or 時間差 90分超で新イベントに分割。
+      const localGroups = groupPhotosByTimeAndDistance(gpsPhotos);
+      console.log(
+        `[enrichNotePlaces] noteId=${noteId.slice(0, 8)} eventGroups=${localGroups.length} strategy=time+distance`
+      );
 
       // 9. APIキー取得
       const apiKey = googlePlacesApiKey.value();
@@ -411,6 +418,14 @@ export const enrichNotePlaces = onCall(
           confidence: topConfidence,
           userConfirmed: false,
           source,
+          // Phase 12.5G-1: 訪問イベント時刻・順序
+          sortOrder: localGroup.sortOrder ?? 0,
+          startAt: localGroup.startAt
+            ? admin.firestore.Timestamp.fromDate(localGroup.startAt)
+            : null,
+          endAt: localGroup.endAt
+            ? admin.firestore.Timestamp.fromDate(localGroup.endAt)
+            : null,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         };

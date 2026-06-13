@@ -39,6 +39,23 @@ const DEFAULT_DELTA = 0.01;
 
 // ── ヘルパー ─────────────────────────────────────────────────────────────────
 
+/**
+ * PlaceGroupDoc の startAt（Firestore Timestamp）を "HH:MM" 形式に変換する。
+ * startAt がない場合は null を返す。
+ */
+function formatStartTime(group: PlaceGroupDoc): string | null {
+  const sa = group.startAt;
+  if (!sa) return null;
+  let date: Date | null = null;
+  if (typeof (sa as { toDate?: () => Date }).toDate === 'function') {
+    date = (sa as { toDate: () => Date }).toDate();
+  }
+  if (!date) return null;
+  const h = String(date.getHours()).padStart(2, '0');
+  const m = String(date.getMinutes()).padStart(2, '0');
+  return `${h}:${m}`;
+}
+
 function getCategoryLabel(category: string): string {
   const map: Record<string, string> = {
     restaurant: 'レストラン',
@@ -318,9 +335,14 @@ export default function NoteMapScreen() {
                   }}
                   activeOpacity={canNavigate ? 0.7 : 1}
                 >
-                  {/* 番号バッジ */}
-                  <View style={styles.cardNumberBadge}>
-                    <Text style={styles.cardNumberText}>#{idx + 1}</Text>
+                  {/* 番号バッジ + 時刻 */}
+                  <View style={styles.cardHeaderRow}>
+                    <View style={styles.cardNumberBadge}>
+                      <Text style={styles.cardNumberText}>#{idx + 1}</Text>
+                    </View>
+                    {formatStartTime(group) ? (
+                      <Text style={styles.cardTimeText}>{formatStartTime(group)}</Text>
+                    ) : null}
                   </View>
                   {/* 場所名 */}
                   <Text style={styles.cardLabel} numberOfLines={2}>
@@ -360,14 +382,12 @@ export default function NoteMapScreen() {
 
         {/* ── 旅順プレビュー ── */}
         <View style={styles.timelineSection}>
-          <Text style={styles.sectionLabel}>旅順プレビュー</Text>
-          <Text style={styles.timelineNote}>
-            ※ 現在は表示順（仮）です。撮影時刻ベースの正確な旅順は今後実装予定。
-          </Text>
+          <Text style={styles.sectionLabel}>この日の流れ</Text>
           <View style={styles.timelineList}>
             {groupsWithLocation.map((group, idx) => {
               const badge = getStatusBadge(group);
               const isLast = idx === groupsWithLocation.length - 1;
+              const timeStr = formatStartTime(group);
               return (
                 <View key={group.id} style={styles.timelineItem}>
                   {/* 左: 番号 + 縦線 */}
@@ -379,12 +399,16 @@ export default function NoteMapScreen() {
                   </View>
                   {/* 右: 情報 */}
                   <View style={styles.timelineRight}>
+                    {timeStr ? (
+                      <Text style={styles.timelineTime}>{timeStr}</Text>
+                    ) : null}
                     <Text style={styles.timelineLabel} numberOfLines={1}>
                       {group.label}
                     </Text>
                     <View style={styles.timelineMetaRow}>
                       <Text style={styles.timelineCategory}>
                         {getCategoryLabel(group.category)}
+                        {group.photoCount > 0 ? ` · 写真${group.photoCount}枚` : ''}
                       </Text>
                       <View style={[styles.timelineBadge, { backgroundColor: badge.color + '22' }]}>
                         <Text style={[styles.timelineBadgeText, { color: badge.color }]}>
@@ -488,18 +512,27 @@ const styles = StyleSheet.create({
     padding: 14,
     gap: 5,
   },
+  cardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
   cardNumberBadge: {
-    alignSelf: 'flex-start',
     backgroundColor: colors.mapAccent,
     borderRadius: 10,
     paddingHorizontal: 8,
     paddingVertical: 2,
-    marginBottom: 4,
   },
   cardNumberText: {
     fontSize: 12,
     fontWeight: '700',
     color: colors.white,
+  },
+  cardTimeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
   },
   cardLabel: {
     fontSize: 14,
@@ -594,7 +627,12 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingLeft: 10,
     justifyContent: 'center',
-    gap: 4,
+    gap: 2,
+  },
+  timelineTime: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.mapAccent,
   },
   timelineLabel: {
     fontSize: 14,

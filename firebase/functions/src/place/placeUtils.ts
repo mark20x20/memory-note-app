@@ -1,5 +1,6 @@
 // Phase 12.5C: GPS グルーピング・距離計算ユーティリティ
 // Phase 8 の groupNearbyLocations アルゴリズムを Cloud Functions 側に移植。
+// Phase 12.5G-1: 時刻 + GPS による訪問イベント分割を追加。
 // クライアント SDK への依存なし。
 
 import type { PhotoData, LocalPlaceGroup } from './types';
@@ -137,6 +138,140 @@ export function isFoodRelatedNote(note: NoteLike): boolean {
   ].join(' ').toLowerCase();
 
   return [...FOOD_KEYWORDS_EN, ...FOOD_KEYWORDS_JA].some((k) => text.includes(k));
+}
+
+// ── 時刻 + GPS による訪問イベント分割 ─────────────────────────────────────────
+
+/**
+ * 写真から takenAt を Date に変換する。
+ * - string (ISO 8601) → Date
+ * - Firestore Timestamp({ toDate() }) → Date
+ * - null / undefined → null
+ */
+function resolvePhotoDate(
+  val: string | null | undefined | { toDate(): Date }
+): Date | null {
+  if (!val) return null;
+  if (typeof val === 'string') {
+    const d = new Date(val);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  if (typeof (val as { toDate(): Date }).toDate === 'function') {
+    return (val as { toDate(): Date }).toDate();
+  }
+  return null;
+}
+
+/** 距離しきい値: 80m を超えたら別イベント */
+const EVENT_DISTANCE_THRESHOLD_METERS = 80;
+
+/** 時間しきい値: 90分を超えたら別イベント */
+const EVENT_TIME_THRESHOLD_MS = 90 * 60 * 1000;
+
+/**
+ * GPS 写真を takenAt + 距離でイベント分割し、LocalPlaceGroup[] を返す。
+ *
+ * アルゴリズム:
+ * 1. takenAt がある写真を takenAt 昇順に並べる
+ * 2. takenAt がない写真は末尾に createdAt 昇順で追加
+ * 3. 前の写真との距離 > 80m または時間差 > 90分 → 新イベント
+ * 4. 各イベントの代表座標は含まれる写真の平均
+ * 5. sortOrder = 0, 1, 2, ...（最大 MAX_PLACE_GROUPS 件）
+ * 6. coverPhotoURL = 最初の写真の downloadURL
+ */
+export function groupPhotosByTimeAndDistance(
+  photos: Array<PhotoData & { latitude: number; longitude: number }>
+): LocalPlaceGroup[] {
+  if (photos.length === 0) return [];
+
+  // takenAt を解決して仮 Date を付与
+  type PhotoWithDate = typeof photos[0] & { _sortDate: Date | null };
+  const withDates: PhotoWithDate[] = photos.map((p) => ({
+    ...p,
+    _sortDate:
+      resolvePhotoDate(p.takenAt as string | null | { toDate(): Date }) ??
+      resolvePhotoDate(p.createdAt as string | null | { toDate(): Date }),
+  }));
+
+  // takenAt ありを先（昇順）、なしを末尾
+  const withTime = withDates.filter((p) => p._sortDate !== null).sort(
+    (a, b) => a._sortDate!.getTime() - b._sortDate!.getTime()
+  );
+  const withoutTime = withDates.filter((p) => p._sortDate === null);
+
+  const ordered = [...withTime, ...withoutTime];
+
+  const groups: Array<{
+    sumLat: number;
+    sumLng: number;
+    count: number;
+    photoIds: string[];
+    coverPhotoURL: string | null;
+    startAt: Date | null;
+    endAt: Date | null;
+    lastLat: number;
+    lastLng: number;
+    lastDate: Date | null;
+  }> = [];
+
+  for (const photo of ordered) {
+    const date = photo._sortDate;
+    let placed = false;
+
+    if (groups.length > 0) {
+      const last = groups[groups.length - 1];
+      const distM = haversineDistance(last.lastLat, last.lastLng, photo.latitude, photo.longitude);
+      const timeDiffMs = date && last.lastDate
+        ? Math.abs(date.getTime() - last.lastDate.getTime())
+        : 0;
+
+      const tooFar = distM > EVENT_DISTANCE_THRESHOLD_METERS;
+      const tooLong = date && last.lastDate
+        ? timeDiffMs > EVENT_TIME_THRESHOLD_MS
+        : false;
+
+      if (!tooFar && !tooLong) {
+        // 同じグループに追加
+        last.count++;
+        last.sumLat += photo.latitude;
+        last.sumLng += photo.longitude;
+        last.photoIds.push(photo.id);
+        last.lastLat = photo.latitude;
+        last.lastLng = photo.longitude;
+        if (date) last.endAt = date;
+        if (date && !last.lastDate) last.lastDate = date;
+        else if (date) last.lastDate = date;
+        placed = true;
+      }
+    }
+
+    if (!placed) {
+      groups.push({
+        sumLat: photo.latitude,
+        sumLng: photo.longitude,
+        count: 1,
+        photoIds: [photo.id],
+        coverPhotoURL: photo.downloadURL ?? null,
+        startAt: date,
+        endAt: date,
+        lastLat: photo.latitude,
+        lastLng: photo.longitude,
+        lastDate: date,
+      });
+    }
+  }
+
+  // LocalPlaceGroup に変換して sortOrder を付与、最大 MAX_PLACE_GROUPS 件に絞る
+  return groups.slice(0, MAX_PLACE_GROUPS).map((g, idx) => ({
+    latitude: g.sumLat / g.count,
+    longitude: g.sumLng / g.count,
+    photoIds: g.photoIds,
+    photoCount: g.photoIds.length,
+    coverPhotoURL: g.coverPhotoURL,
+    startAt: g.startAt,
+    endAt: g.endAt,
+    sortOrder: idx,
+  }));
 }
 
 // ── キャッシュ有効期限チェック ────────────────────────────────────────────────

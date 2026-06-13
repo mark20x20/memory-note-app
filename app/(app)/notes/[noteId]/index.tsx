@@ -25,6 +25,7 @@ import { getPhotoLocationsFromPhotos } from '@/features/map/utils/locationUtils'
 import { AiDiarySection } from '@/features/memoryNotes/components/AiDiarySection';
 import { canEdit, canManageMembers, canGenerateAiDiary, getCurrentUserRole } from '@/features/memoryNotes/utils/permissions';
 import { VisitedPlacesSection } from '@/features/placeIntelligence/components/VisitedPlacesSection';
+import { VisitTimelineSection } from '@/features/placeIntelligence/components/VisitTimelineSection';
 
 function formatDate(date: Date): string {
   return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
@@ -174,6 +175,12 @@ export default function NoteDetailScreen() {
         <VisitedPlacesSection
           noteId={noteId}
           note={note}
+          canEdit={!!userCanEdit}
+        />
+
+        {/* ── この日の流れ（Phase 12.5G-1 実装） ── */}
+        <VisitTimelineSection
+          noteId={noteId}
           canEdit={!!userCanEdit}
         />
 

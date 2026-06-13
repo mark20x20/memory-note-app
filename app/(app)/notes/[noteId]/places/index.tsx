@@ -27,6 +27,19 @@ import type { PlaceGroupDoc } from '@/features/map/types';
 
 // ── ヘルパー ──────────────────────────────────────────────────────────────────
 
+function formatStartTime(group: PlaceGroupDoc): string | null {
+  const sa = group.startAt;
+  if (!sa) return null;
+  let date: Date | null = null;
+  if (typeof (sa as { toDate?: () => Date }).toDate === 'function') {
+    date = (sa as { toDate: () => Date }).toDate();
+  }
+  if (!date) return null;
+  const h = String(date.getHours()).padStart(2, '0');
+  const m = String(date.getMinutes()).padStart(2, '0');
+  return `${h}:${m}`;
+}
+
 function getCategoryLabel(category: string): string {
   const map: Record<string, string> = {
     restaurant: 'レストラン',
@@ -163,9 +176,10 @@ export default function PlacesIndexScreen() {
               </Text>
             </View>
           ) : (
-            groups.map((group) => {
+            groups.map((group, idx) => {
               const badge = getStatusBadge(group);
               const isConfirmed = group.userConfirmed;
+              const timeStr = formatStartTime(group);
               return (
                 <TouchableOpacity
                   key={group.id}
@@ -178,6 +192,12 @@ export default function PlacesIndexScreen() {
                   activeOpacity={userCanEdit || isConfirmed ? 0.7 : 1}
                 >
                   <View style={styles.groupCardHeader}>
+                    <View style={styles.groupNumberBadge}>
+                      <Text style={styles.groupNumberText}>#{idx + 1}</Text>
+                    </View>
+                    {timeStr ? (
+                      <Text style={styles.groupTimeText}>{timeStr}</Text>
+                    ) : null}
                     <Text style={styles.groupLabel} numberOfLines={1}>
                       {group.label}
                     </Text>
@@ -320,9 +340,26 @@ const styles = StyleSheet.create({
   groupCardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     marginBottom: 4,
-    gap: 8,
+    gap: 6,
+  },
+  groupNumberBadge: {
+    backgroundColor: colors.mapAccent,
+    borderRadius: 8,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    flexShrink: 0,
+  },
+  groupNumberText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.white,
+  },
+  groupTimeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    flexShrink: 0,
   },
   groupLabel: {
     flex: 1,

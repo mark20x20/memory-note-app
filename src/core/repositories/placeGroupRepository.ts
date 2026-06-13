@@ -29,7 +29,8 @@ type PlaceGroupUpdate = Partial<Omit<PlaceGroupDoc, 'id' | 'noteId' | 'createdAt
 export const placeGroupRepository = {
   /**
    * ノートの PlaceGroup 一覧をリアルタイムで監視する。
-   * 作成日昇順で返す（Phase 8 の写真順序と対応しやすいため）。
+   * Phase 12.5G-1: sortOrder → startAt → createdAt の優先順でソートする。
+   * Firestore 複合インデックスを避けるため、クライアント側でソートする。
    */
   subscribePlaceGroupsByNoteId(
     noteId: string,
@@ -41,11 +42,41 @@ export const placeGroupRepository = {
       return () => {};
     }
     const colRef = collection(db, 'memory_notes', noteId, 'place_groups');
+    // createdAt でフェッチして後でクライアントソート
     const q = query(colRef, orderBy('createdAt', 'asc'));
     return onSnapshot(
       q,
       (snap) => {
-        onNext(snap.docs.map((d) => ({ id: d.id, ...d.data() } as PlaceGroupDoc)));
+        const groups = snap.docs.map((d) => ({ id: d.id, ...d.data() } as PlaceGroupDoc));
+        // sortOrder → startAt → createdAt の優先順でソート
+        groups.sort((a, b) => {
+          const orderA = a.sortOrder ?? Infinity;
+          const orderB = b.sortOrder ?? Infinity;
+          if (orderA !== orderB) return orderA - orderB;
+          // startAt で比較
+          const saA = a.startAt;
+          const saB = b.startAt;
+          const tA = saA && typeof (saA as { toMillis?: () => number }).toMillis === 'function'
+            ? (saA as { toMillis: () => number }).toMillis()
+            : null;
+          const tB = saB && typeof (saB as { toMillis?: () => number }).toMillis === 'function'
+            ? (saB as { toMillis: () => number }).toMillis()
+            : null;
+          if (tA !== null && tB !== null) return tA - tB;
+          if (tA !== null) return -1;
+          if (tB !== null) return 1;
+          // createdAt で比較
+          const caA = a.createdAt;
+          const caB = b.createdAt;
+          const ctA = caA && typeof (caA as { toMillis?: () => number }).toMillis === 'function'
+            ? (caA as { toMillis: () => number }).toMillis()
+            : 0;
+          const ctB = caB && typeof (caB as { toMillis?: () => number }).toMillis === 'function'
+            ? (caB as { toMillis: () => number }).toMillis()
+            : 0;
+          return ctA - ctB;
+        });
+        onNext(groups);
       },
       (err) => {
         onError?.(err);

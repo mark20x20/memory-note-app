@@ -96,6 +96,7 @@ export type VisitedPlacesSummary = {
  * Firestore: memory_notes/{noteId}/place_groups/{placeGroupId}
  * Phase 8 の簡易グルーピング型（PlaceGroup）とは別物。
  * PlaceGroup は loktal/UI 専用、PlaceGroupDoc は Firestore 保存用。
+ * Phase 12.5G-1: 訪問イベント単位として扱えるよう startAt/endAt/sortOrder を追加。
  */
 export type PlaceGroupDoc = {
   id: string;
@@ -127,6 +128,11 @@ export type PlaceGroupDoc = {
 
   // データソース
   source: PlaceGroupSource;
+
+  // Phase 12.5G-1: 訪問イベント時刻・順序
+  startAt?: Timestamp | null;   // イベント開始時刻（最初の写真の takenAt）
+  endAt?: Timestamp | null;     // イベント終了時刻（最後の写真の takenAt）
+  sortOrder?: number;           // 時系列順（0, 1, 2, ...）
 
   // タイムスタンプ
   createdAt: Timestamp | null;
