@@ -22,21 +22,8 @@ import { colors } from '@/shared/theme/colors';
 import { useAuth } from '@/core/auth/AuthContext';
 import { useNoteDetail } from '@/features/memoryNotes/hooks/useNoteDetail';
 import { placeGroupRepository } from '@/core/repositories/placeGroupRepository';
-import {
-  enrichNotePlacesCallable,
-  GROUPING_PRESETS,
-  type GroupingPreset,
-} from '@/features/placeIntelligence/api/placeFunctionsClient';
 import { canEdit } from '@/features/memoryNotes/utils/permissions';
 import type { PlaceGroupDoc } from '@/features/map/types';
-
-// ── 分割プリセット ─────────────────────────────────────────────────────────────
-
-const PRESET_LABELS: Record<GroupingPreset, string> = {
-  compact:  '細かく',
-  standard: '標準',
-  relaxed:  'ゆったり',
-};
 
 // ── ヘルパー ──────────────────────────────────────────────────────────────────
 
@@ -89,9 +76,6 @@ export default function PlacesIndexScreen() {
   const { note, isLoading: noteLoading } = useNoteDetail(noteId ?? null);
   const [groups, setGroups] = useState<PlaceGroupDoc[]>([]);
   const [groupsLoading, setGroupsLoading] = useState(true);
-  const [enriching, setEnriching] = useState(false);
-  const [enrichError, setEnrichError] = useState<string | null>(null);
-  const [groupingPreset, setGroupingPreset] = useState<GroupingPreset>('standard');
   const unsubRef = useRef<(() => void) | null>(null);
 
   const userCanEdit = uid && note ? canEdit(note, uid) : false;
@@ -110,29 +94,10 @@ export default function PlacesIndexScreen() {
     return () => unsubRef.current?.();
   }, [noteId]);
 
-  async function handleEnrich() {
-    if (!noteId) return;
-    setEnriching(true);
-    setEnrichError(null);
-    try {
-      await enrichNotePlacesCallable({
-        noteId,
-        grouping: GROUPING_PRESETS[groupingPreset],
-      });
-    } catch (err: unknown) {
-      const msg = err && typeof err === 'object' && 'message' in err
-        ? String((err as { message: unknown }).message)
-        : '場所の推定に失敗しました';
-      setEnrichError(msg);
-    } finally {
-      setEnriching(false);
-    }
-  }
-
   if (noteLoading || groupsLoading) {
     return (
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-        <ScreenHeader title="訪れた場所" onBack={() => router.back()} />
+        <ScreenHeader title="この日の流れ" onBack={() => router.back()} />
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={colors.mapAccent} />
           <Text style={styles.loadingText}>読み込み中...</Text>
@@ -144,7 +109,7 @@ export default function PlacesIndexScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <ScreenHeader
-        title="訪れた場所"
+        title="この日の流れ"
         onBack={() => router.back()}
         rightElement={
           groups.length > 0 ? (
@@ -160,52 +125,31 @@ export default function PlacesIndexScreen() {
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
-        {/* ── 推定ボタン + プリセット（owner/editor のみ） ── */}
-        {userCanEdit ? (
-          <View style={styles.enrichSection}>
-            {/* 分割プリセット */}
-            <Text style={styles.presetLabel}>写真のまとめ方</Text>
-            <View style={styles.presetChipRow}>
-              {(['compact', 'standard', 'relaxed'] as GroupingPreset[]).map((p) => (
-                <TouchableOpacity
-                  key={p}
-                  style={[styles.presetChip, groupingPreset === p && styles.presetChipSelected]}
-                  onPress={() => setGroupingPreset(p)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.presetChipText, groupingPreset === p && styles.presetChipTextSelected]}>
-                    {PRESET_LABELS[p]}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+        {/* ── 説明 + フロー分割設定リンク（owner/editor のみ） ── */}
+        <View style={styles.enrichSection}>
+          <Text style={styles.enrichDesc}>
+            各フローの場所を確認・編集できます。
+          </Text>
+          {userCanEdit ? (
             <TouchableOpacity
-              style={[styles.enrichButton, enriching && styles.enrichButtonDisabled]}
-              onPress={handleEnrich}
-              disabled={enriching}
+              style={styles.flowSettingsLink}
+              onPress={() => router.push(`/(app)/notes/${noteId}/flow-settings`)}
             >
-              {enriching ? (
-                <ActivityIndicator size="small" color={colors.white} />
-              ) : (
-                <Text style={styles.enrichButtonText}>写真から場所を推定</Text>
-              )}
+              <Text style={styles.flowSettingsLinkText}>フロー分割設定</Text>
             </TouchableOpacity>
-            {enrichError ? (
-              <Text style={styles.errorText}>{enrichError}</Text>
-            ) : null}
-          </View>
-        ) : null}
+          ) : null}
+        </View>
 
         {/* ── PlaceGroup 一覧 ── */}
         <View style={styles.section}>
           {groups.length === 0 ? (
             <View style={styles.emptyBox}>
               <Text style={styles.emptyEmoji}>📍</Text>
-              <Text style={styles.emptyTitle}>まだ場所が推定されていません</Text>
+              <Text style={styles.emptyTitle}>まだフローが作成されていません</Text>
               <Text style={styles.emptyDesc}>
                 {userCanEdit
-                  ? '「写真から場所を推定」ボタンを押して候補を取得してください。'
-                  : '位置情報のある写真が追加されると、場所が推定されます。'}
+                  ? 'ノート詳細の「この日の流れ」からフローを作成してください。'
+                  : '位置情報のある写真が追加されると、フローが作成されます。'}
               </Text>
             </View>
           ) : (
@@ -327,58 +271,25 @@ const styles = StyleSheet.create({
   // 推定セクション
   enrichSection: {
     paddingHorizontal: 20,
-    paddingTop: 20,
+    paddingTop: 16,
     gap: 8,
   },
-  // 分割プリセット
-  presetLabel: {
-    fontSize: 11,
+  enrichDesc: {
+    fontSize: 13,
     color: colors.textTertiary,
-    marginBottom: 2,
   },
-  presetChipRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  presetChip: {
-    borderWidth: 1.5,
-    borderColor: colors.border,
+  flowSettingsLink: {
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: colors.mapAccent,
     borderRadius: 20,
     paddingHorizontal: 14,
-    paddingVertical: 5,
-    backgroundColor: colors.surface,
+    paddingVertical: 6,
   },
-  presetChipSelected: {
-    borderColor: colors.mapAccent,
-    backgroundColor: colors.mapAccentLight,
-  },
-  presetChipText: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: colors.textSecondary,
-  },
-  presetChipTextSelected: {
+  flowSettingsLinkText: {
+    fontSize: 13,
+    fontWeight: '600',
     color: colors.mapAccent,
-    fontWeight: '600',
-  },
-  enrichButton: {
-    backgroundColor: colors.mapAccent,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  enrichButtonDisabled: {
-    opacity: 0.6,
-  },
-  enrichButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.white,
-  },
-  errorText: {
-    fontSize: 12,
-    color: colors.error,
-    textAlign: 'center',
   },
   // セクション
   section: {

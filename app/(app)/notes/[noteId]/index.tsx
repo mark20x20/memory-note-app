@@ -3,6 +3,8 @@
 // - owner/editor: 編集ボタン表示
 // - owner のみ: メンバー管理ボタン表示
 // - viewer: 編集ボタン非表示、AI再生成ボタン非表示
+// Phase 12.5G-3: VisitedPlacesSection を削除。この日の流れを主役に。
+//               地図を訪問イベント地図(EventMapPreview)に変更。
 
 import { router, useLocalSearchParams } from 'expo-router';
 import {
@@ -20,12 +22,11 @@ import { colors } from '@/shared/theme/colors';
 import { useAuth } from '@/core/auth/AuthContext';
 import { useNoteDetail } from '@/features/memoryNotes/hooks/useNoteDetail';
 import { useNotePhotos } from '@/features/photos/hooks/useNotePhotos';
-import { MapPreview } from '@/features/map/components/MapPreview';
 import { getPhotoLocationsFromPhotos } from '@/features/map/utils/locationUtils';
 import { AiDiarySection } from '@/features/memoryNotes/components/AiDiarySection';
 import { canEdit, canManageMembers, canGenerateAiDiary, getCurrentUserRole } from '@/features/memoryNotes/utils/permissions';
-import { VisitedPlacesSection } from '@/features/placeIntelligence/components/VisitedPlacesSection';
 import { VisitTimelineSection } from '@/features/placeIntelligence/components/VisitTimelineSection';
+import { EventMapPreview } from '@/features/placeIntelligence/components/EventMapPreview';
 
 function formatDate(date: Date): string {
   return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
@@ -171,17 +172,11 @@ export default function NoteDetailScreen() {
           </View>
         ) : null}
 
-        {/* ── この日の流れ（Phase 12.5G-2: 主役に格上げ） ── */}
+        {/* ── この日の流れ（Phase 12.5G-3: 主役） ── */}
         <VisitTimelineSection
           noteId={noteId}
           canEdit={!!userCanEdit}
-        />
-
-        {/* ── 訪れた場所セクション（場所推定ボタン + サマリー） ── */}
-        <VisitedPlacesSection
-          noteId={noteId}
-          note={note}
-          canEdit={!!userCanEdit}
+          enrichmentStatus={note.placeEnrichmentStatus}
         />
 
         {/* ── AI日記セクション（Phase 9 実装、Phase 11 で canRegenerate 追加） ── */}
@@ -215,7 +210,7 @@ export default function NoteDetailScreen() {
           )}
         </View>
 
-        {/* ── 地図セクション（Phase 8 実装） ── */}
+        {/* ── 地図セクション（Phase 12.5G-3: 訪問イベント地図） ── */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>地図</Text>
           {photosLoading ? (
@@ -223,7 +218,11 @@ export default function NoteDetailScreen() {
               <Text style={styles.mapLoadingText}>位置情報を読み込み中...</Text>
             </View>
           ) : (
-            <MapPreview locations={photoLocations} height={180} />
+            <EventMapPreview
+              noteId={noteId}
+              photoLocations={photoLocations}
+              height={180}
+            />
           )}
         </View>
 
@@ -387,6 +386,7 @@ const styles = StyleSheet.create({
     color: colors.textTertiary,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
+    marginBottom: 12,
   },
   // Memo
   memoCard: {
@@ -439,7 +439,7 @@ const styles = StyleSheet.create({
     color: colors.textTertiary,
     textAlign: 'center',
   },
-  // Map (Phase 8)
+  // Map (Phase 12.5G-3: 訪問イベント地図)
   mapLoadingBox: {
     height: 180,
     backgroundColor: colors.mapAccentLight,

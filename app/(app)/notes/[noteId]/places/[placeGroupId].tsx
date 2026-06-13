@@ -1,9 +1,9 @@
-// Phase 12.5E: 場所候補確認画面
+// Phase 12.5E: 場所候補確認画面 → Phase 12.5G-3: フロー詳細編集画面
 // Route: /(app)/notes/[noteId]/places/[placeGroupId]
 //
-// 特定の PlaceGroup に対して候補一覧を表示し、ユーザーが1件を選択できる。
-// 候補が適切でない場合は手動入力画面へ遷移できる。
-// viewer は閲覧のみ（選択・修正不可）。
+// 上部: このフロー（時刻・写真サムネイル・場所名・カテゴリ・一言メモ）
+// 下部: 候補地図（大きめ 280px）・候補一覧・手動入力
+// viewer は閲覧のみ（選択・メモ編集不可）。
 
 import { useEffect, useState } from 'react';
 import {
@@ -15,6 +15,8 @@ import {
   ActivityIndicator,
   Alert,
   Dimensions,
+  Image,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MapView, { Marker, type Region } from 'react-native-maps';
@@ -24,14 +26,17 @@ import { colors } from '@/shared/theme/colors';
 import { useAuth } from '@/core/auth/AuthContext';
 import { useNoteDetail } from '@/features/memoryNotes/hooks/useNoteDetail';
 import { placeGroupRepository } from '@/core/repositories/placeGroupRepository';
-import { selectPlaceCandidateCallable } from '@/features/placeIntelligence/api/placeFunctionsClient';
+import {
+  selectPlaceCandidateCallable,
+  updatePlaceGroupManuallyCallable,
+} from '@/features/placeIntelligence/api/placeFunctionsClient';
 import { canEdit } from '@/features/memoryNotes/utils/permissions';
 import type { PlaceGroupDoc, PlaceCandidateDoc } from '@/features/map/types';
 
 // ── 候補地図 定数 ─────────────────────────────────────────────────────────────
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
-const CANDIDATE_MAP_HEIGHT = 200;
+const CANDIDATE_MAP_HEIGHT = 280;
 const DEFAULT_DELTA = 0.008;
 
 // ── 候補カテゴリ分類 ──────────────────────────────────────────────────────────
@@ -102,9 +107,21 @@ function getTypeLabels(types: string[]): string {
   return labels.join(' · ');
 }
 
+function formatStartTime(group: PlaceGroupDoc): string | null {
+  const sa = group.startAt;
+  if (!sa) return null;
+  let date: Date | null = null;
+  if (typeof (sa as { toDate?: () => Date }).toDate === 'function') {
+    date = (sa as { toDate: () => Date }).toDate();
+  }
+  if (!date) return null;
+  const h = String(date.getHours()).padStart(2, '0');
+  const m = String(date.getMinutes()).padStart(2, '0');
+  return `${h}:${m}`;
+}
+
 // ── 候補地図ヘルパー ──────────────────────────────────────────────────────────
 
-/** lat/lng が有効な候補だけを抽出する */
 function getCandidatesWithLocation(
   candidates: PlaceCandidateDoc[]
 ): (PlaceCandidateDoc & { latitude: number; longitude: number })[] {
@@ -117,7 +134,6 @@ function getCandidatesWithLocation(
   );
 }
 
-/** 候補の座標群から MapView の初期 Region を計算する */
 function calcCandidateRegion(
   candidates: { latitude: number; longitude: number }[],
   groupLat: number,
@@ -139,30 +155,19 @@ function calcCandidateRegion(
   };
 }
 
-/** 候補用番号ピン（候補リストの番号と一致させる） */
-function CandidateMarkerView({
-  number,
-  selected,
-}: {
-  number: number;
-  selected: boolean;
-}) {
+function CandidateMarkerView({ number, selected }: { number: number; selected: boolean }) {
   return (
     <View style={candidateMarkerStyles.wrapper}>
       <View
         style={[
           candidateMarkerStyles.badge,
-          selected
-            ? candidateMarkerStyles.badgeSelected
-            : candidateMarkerStyles.badgeDefault,
+          selected ? candidateMarkerStyles.badgeSelected : candidateMarkerStyles.badgeDefault,
         ]}
       >
         <Text
           style={[
             candidateMarkerStyles.text,
-            selected
-              ? candidateMarkerStyles.textSelected
-              : candidateMarkerStyles.textDefault,
+            selected ? candidateMarkerStyles.textSelected : candidateMarkerStyles.textDefault,
           ]}
         >
           {number}
@@ -236,6 +241,10 @@ export default function PlaceGroupDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [selecting, setSelecting] = useState<string | null>(null);
 
+  // イベントメモ
+  const [eventMemo, setEventMemo] = useState('');
+  const [savingMemo, setSavingMemo] = useState(false);
+
   const userCanEdit = uid && note ? canEdit(note, uid) : false;
 
   useEffect(() => {
@@ -250,6 +259,7 @@ export default function PlaceGroupDetailScreen() {
       ]);
       if (!cancelled) {
         setGroup(g);
+        if (g?.eventMemo) setEventMemo(g.eventMemo);
         setCandidates(c);
         setLoading(false);
       }
@@ -269,10 +279,7 @@ export default function PlaceGroupDetailScreen() {
         candidateId: candidate.id,
       });
       Alert.alert('確定しました', `「${candidate.name}」を訪れた場所として確定しました。`, [
-        {
-          text: 'OK',
-          onPress: () => router.back(),
-        },
+        { text: 'OK', onPress: () => router.back() },
       ]);
     } catch (err: unknown) {
       const msg = err && typeof err === 'object' && 'message' in err
@@ -284,13 +291,33 @@ export default function PlaceGroupDetailScreen() {
     }
   }
 
+  async function handleSaveMemo() {
+    if (!noteId || !placeGroupId || !userCanEdit) return;
+    setSavingMemo(true);
+    try {
+      await updatePlaceGroupManuallyCallable({
+        noteId,
+        placeGroupId,
+        eventMemo: eventMemo.trim() || null,
+      });
+      Alert.alert('保存しました', '一言メモを保存しました。');
+    } catch (err: unknown) {
+      const msg = err && typeof err === 'object' && 'message' in err
+        ? String((err as { message: unknown }).message)
+        : 'メモの保存に失敗しました';
+      Alert.alert('エラー', msg);
+    } finally {
+      setSavingMemo(false);
+    }
+  }
+
   if (loading) {
     return (
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-        <ScreenHeader title="場所を確認" onBack={() => router.back()} />
+        <ScreenHeader title="フロー詳細" onBack={() => router.back()} />
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={colors.mapAccent} />
-          <Text style={styles.loadingText}>候補を読み込み中...</Text>
+          <Text style={styles.loadingText}>読み込み中...</Text>
         </View>
       </SafeAreaView>
     );
@@ -299,20 +326,20 @@ export default function PlaceGroupDetailScreen() {
   if (!group) {
     return (
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-        <ScreenHeader title="場所を確認" onBack={() => router.back()} />
+        <ScreenHeader title="フロー詳細" onBack={() => router.back()} />
         <View style={styles.centered}>
           <Text style={styles.errorEmoji}>🔍</Text>
-          <Text style={styles.errorText}>場所が見つかりませんでした</Text>
+          <Text style={styles.errorText}>データが見つかりませんでした</Text>
         </View>
       </SafeAreaView>
     );
   }
 
-  // 候補を priority / other に分類（全 candidates のインデックスで番号付け）
+  // 候補を priority / other に分類
   const priorityCandidates = candidates.filter(isPriorityCandidate);
   const otherCandidates = candidates.filter((c) => !isPriorityCandidate(c));
 
-  // 候補地図用: lat/lng がある候補のみ
+  // 候補地図用
   const candidatesWithLoc = getCandidatesWithLocation(candidates);
   const candidateMapRegion =
     candidatesWithLoc.length > 0
@@ -326,10 +353,19 @@ export default function PlaceGroupDetailScreen() {
 
   const isSelected = (c: PlaceCandidateDoc) => c.id === group.selectedCandidateId;
 
+  // 写真サムネイル
+  const thumbURLs =
+    group.photoPreviewURLs && group.photoPreviewURLs.length > 0
+      ? group.photoPreviewURLs.slice(0, 3)
+      : group.coverPhotoURL
+      ? [group.coverPhotoURL]
+      : [];
+
+  const timeStr = formatStartTime(group);
+
   function renderCandidate(candidate: PlaceCandidateDoc) {
     const selected = isSelected(candidate);
-    const isLoading = selecting === candidate.id;
-    // 候補地図と番号を合わせる（candidates 配列全体の index）
+    const isLoadingCandidate = selecting === candidate.id;
     const globalIdx = candidates.findIndex((x) => x.id === candidate.id);
     return (
       <View
@@ -375,12 +411,12 @@ export default function PlaceGroupDetailScreen() {
             style={[
               styles.selectButton,
               selected && styles.selectButtonSelected,
-              isLoading && styles.selectButtonLoading,
+              isLoadingCandidate && styles.selectButtonLoading,
             ]}
             onPress={() => handleSelect(candidate)}
-            disabled={isLoading || !!selecting}
+            disabled={isLoadingCandidate || !!selecting}
           >
-            {isLoading ? (
+            {isLoadingCandidate ? (
               <ActivityIndicator size="small" color={selected ? colors.white : colors.mapAccent} />
             ) : (
               <Text style={[styles.selectButtonText, selected && styles.selectButtonTextSelected]}>
@@ -395,13 +431,17 @@ export default function PlaceGroupDetailScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      <ScreenHeader title="場所を確認" onBack={() => router.back()} />
+      <ScreenHeader title="フロー詳細" onBack={() => router.back()} />
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
-        {/* ── 現在の場所情報 ── */}
+        {/* ── このフロー情報 ── */}
         <View style={styles.section}>
+          <Text style={styles.groupTitleLabel}>このフロー</Text>
           <View style={styles.currentGroupCard}>
+            {timeStr ? (
+              <Text style={styles.flowTime}>{timeStr}</Text>
+            ) : null}
             <Text style={styles.currentGroupLabel}>{group.label}</Text>
             <Text style={styles.currentGroupCategory}>{getCategoryLabel(group.category)}</Text>
             <View style={styles.currentGroupMeta}>
@@ -412,14 +452,68 @@ export default function PlaceGroupDetailScreen() {
                 {group.userConfirmed ? '確認済み' : '未確認'}
               </Text>
             </View>
+
+            {/* 写真サムネイル */}
+            {thumbURLs.length > 0 ? (
+              <View style={styles.thumbRow}>
+                {thumbURLs.map((url, ti) => (
+                  <Image
+                    key={ti}
+                    source={{ uri: url }}
+                    style={styles.thumb}
+                    resizeMode="cover"
+                  />
+                ))}
+              </View>
+            ) : null}
           </View>
+        </View>
+
+        {/* ── 一言メモ ── */}
+        <View style={styles.section}>
+          <Text style={styles.groupTitleLabel}>一言メモ</Text>
+          {userCanEdit ? (
+            <View style={styles.memoInputCard}>
+              <TextInput
+                style={styles.memoInput}
+                value={eventMemo}
+                onChangeText={setEventMemo}
+                placeholder="このフローの一言メモを入力..."
+                placeholderTextColor={colors.textTertiary}
+                multiline
+                maxLength={200}
+              />
+              <View style={styles.memoInputFooter}>
+                <Text style={styles.memoCharCount}>{eventMemo.length}/200</Text>
+                <TouchableOpacity
+                  style={[styles.memoSaveButton, savingMemo && styles.memoSaveButtonDisabled]}
+                  onPress={handleSaveMemo}
+                  disabled={savingMemo}
+                >
+                  {savingMemo ? (
+                    <ActivityIndicator size="small" color={colors.white} />
+                  ) : (
+                    <Text style={styles.memoSaveButtonText}>保存</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : group.eventMemo ? (
+            <View style={styles.memoReadonly}>
+              <Text style={styles.memoReadonlyText}>{group.eventMemo}</Text>
+            </View>
+          ) : (
+            <Text style={styles.memoEmpty}>メモなし</Text>
+          )}
         </View>
 
         {/* ── 候補地図 ── */}
         {candidatesWithLoc.length > 0 ? (
           <View style={styles.candidateMapSection}>
             <Text style={styles.groupTitle}>候補地図</Text>
-            <Text style={styles.candidateMapDesc}>候補の位置を地図で確認</Text>
+            <Text style={styles.candidateMapDesc}>
+              候補の位置を地図で確認して、正しい場所を選んでください。
+            </Text>
             <View style={styles.candidateMapContainer}>
               <MapView
                 style={{ width: SCREEN_WIDTH - 40, height: CANDIDATE_MAP_HEIGHT }}
@@ -429,13 +523,11 @@ export default function PlaceGroupDetailScreen() {
                 scrollEnabled
                 zoomEnabled
               >
-                {/* PlaceGroup の代表点（グレーピン） */}
                 <Marker
                   coordinate={{ latitude: group.latitude, longitude: group.longitude }}
                   title="撮影地点"
                   pinColor={colors.textTertiary}
                 />
-                {/* 候補ピン（番号は candidates 配列全体の index） */}
                 {candidatesWithLoc.map((c) => {
                   const globalIdx = candidates.findIndex((x) => x.id === c.id);
                   return (
@@ -462,14 +554,12 @@ export default function PlaceGroupDetailScreen() {
             <View style={styles.emptyBox}>
               <Text style={styles.emptyEmoji}>🔍</Text>
               <Text style={styles.emptyTitle}>候補が見つかりませんでした</Text>
-              <Text style={styles.emptyDesc}>
-                手動で場所を入力してください。
-              </Text>
+              <Text style={styles.emptyDesc}>手動で場所を入力してください。</Text>
             </View>
           </View>
         ) : null}
 
-        {/* ── 訪問候補（restaurant/cafe/観光地/駅など） ── */}
+        {/* ── 訪問候補 ── */}
         {priorityCandidates.length > 0 ? (
           <View style={styles.section}>
             <Text style={styles.groupTitle}>訪問候補</Text>
@@ -538,29 +628,42 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 20,
   },
-  // 現在の場所情報カード
+  groupTitleLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textTertiary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 8,
+  },
+  // このフロー情報カード
   currentGroupCard: {
     backgroundColor: colors.mapAccentLight,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: colors.mapAccent + '44',
     padding: 16,
+    gap: 4,
+  },
+  flowTime: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.mapAccent,
   },
   currentGroupLabel: {
     fontSize: 18,
     fontWeight: '700',
     color: colors.textPrimary,
-    marginBottom: 4,
   },
   currentGroupCategory: {
     fontSize: 13,
     color: colors.mapAccent,
-    marginBottom: 10,
   },
   currentGroupMeta: {
     flexDirection: 'row',
     gap: 8,
     flexWrap: 'wrap',
+    marginTop: 4,
   },
   metaChip: {
     backgroundColor: colors.surface,
@@ -576,6 +679,72 @@ const styles = StyleSheet.create({
   },
   pendingChip: {
     color: colors.warning,
+  },
+  thumbRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 10,
+  },
+  thumb: {
+    width: 64,
+    height: 64,
+    borderRadius: 8,
+    backgroundColor: colors.border,
+  },
+  // 一言メモ
+  memoInputCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 12,
+  },
+  memoInput: {
+    fontSize: 14,
+    color: colors.textPrimary,
+    minHeight: 64,
+    textAlignVertical: 'top',
+  },
+  memoInputFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  memoCharCount: {
+    fontSize: 11,
+    color: colors.textTertiary,
+  },
+  memoSaveButton: {
+    backgroundColor: colors.mapAccent,
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  memoSaveButtonDisabled: {
+    opacity: 0.6,
+  },
+  memoSaveButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.white,
+  },
+  memoReadonly: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 14,
+  },
+  memoReadonlyText: {
+    fontSize: 14,
+    color: colors.textPrimary,
+    lineHeight: 20,
+  },
+  memoEmpty: {
+    fontSize: 13,
+    color: colors.textTertiary,
   },
   // 候補地図セクション
   candidateMapSection: {

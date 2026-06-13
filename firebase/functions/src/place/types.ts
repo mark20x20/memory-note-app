@@ -45,6 +45,8 @@ export type PlaceGroupDoc = {
   sortOrder?: number;
   // Phase 12.5G-2: イベント内写真プレビュー（最大3枚の downloadURL）
   photoPreviewURLs?: string[];
+  // Phase 12.5G-3: イベントメモ
+  eventMemo?: string | null;
   createdAt: Timestamp | null;
   updatedAt: Timestamp | null;
 };

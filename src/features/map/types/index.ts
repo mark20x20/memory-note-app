@@ -135,6 +135,8 @@ export type PlaceGroupDoc = {
   sortOrder?: number;           // 時系列順（0, 1, 2, ...）
   // Phase 12.5G-2: イベント内写真プレビュー（最大3枚の downloadURL）
   photoPreviewURLs?: string[];
+  // Phase 12.5G-3: イベントメモ
+  eventMemo?: string | null;
 
   // タイムスタンプ
   createdAt: Timestamp | null;

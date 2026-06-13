@@ -798,6 +798,7 @@ export const updatePlaceGroupManually = onCall(
       placeGroupId?: unknown;
       label?: unknown;
       category?: unknown;
+      eventMemo?: unknown;
     };
     if (typeof data.noteId !== 'string' || !data.noteId.trim()) {
       throw new HttpsError('invalid-argument', 'noteId が不正です');
@@ -805,25 +806,15 @@ export const updatePlaceGroupManually = onCall(
     if (typeof data.placeGroupId !== 'string' || !data.placeGroupId.trim()) {
       throw new HttpsError('invalid-argument', 'placeGroupId が不正です');
     }
-    if (typeof data.label !== 'string') {
-      throw new HttpsError('invalid-argument', 'label が不正です');
-    }
     const noteId = data.noteId.trim();
     const placeGroupId = data.placeGroupId.trim();
-    const label = data.label.trim();
 
-    // label バリデーション（1〜50文字）
-    if (label.length === 0 || label.length > 50) {
-      throw new HttpsError('invalid-argument', 'label は1〜50文字で入力してください');
-    }
+    // Phase 12.5G-3: eventMemo のみの更新パス（label が省略可能になった）
+    const hasLabel = data.label !== undefined && data.label !== null;
+    const hasEventMemo = data.eventMemo !== undefined;
 
-    // category バリデーション
-    let category: PlaceCategory = 'unknown';
-    if (data.category !== undefined && data.category !== null) {
-      if (typeof data.category !== 'string' || !VALID_CATEGORIES.includes(data.category as PlaceCategory)) {
-        throw new HttpsError('invalid-argument', '不正な category です');
-      }
-      category = data.category as PlaceCategory;
+    if (!hasLabel && !hasEventMemo) {
+      throw new HttpsError('invalid-argument', 'label または eventMemo のいずれかが必要です');
     }
 
     const db = admin.firestore();
@@ -835,23 +826,58 @@ export const updatePlaceGroupManually = onCall(
       throw new HttpsError('not-found', 'PlaceGroup が見つかりません');
     }
 
-    // PlaceGroup を更新（selectedCandidateId / selectedProviderPlaceId は削除）
-    await groupRef.update({
-      userEditedLabel: label,
-      label,
-      category,
-      userConfirmed: true,
-      source: 'manual' as PlaceGroupSource,
-      selectedCandidateId: admin.firestore.FieldValue.delete(),
-      selectedProviderPlaceId: admin.firestore.FieldValue.delete(),
+    const groupUpdate: Record<string, unknown> = {
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
+    };
 
-    // visitedPlacesSummary を再計算
-    await recalculateVisitedPlacesSummary(db, noteId);
+    // label/category を更新する場合（手動場所入力）
+    if (hasLabel) {
+      if (typeof data.label !== 'string') {
+        throw new HttpsError('invalid-argument', 'label が不正です');
+      }
+      const label = data.label.trim();
+      if (label.length === 0 || label.length > 50) {
+        throw new HttpsError('invalid-argument', 'label は1〜50文字で入力してください');
+      }
+
+      let category: PlaceCategory = 'unknown';
+      if (data.category !== undefined && data.category !== null) {
+        if (typeof data.category !== 'string' || !VALID_CATEGORIES.includes(data.category as PlaceCategory)) {
+          throw new HttpsError('invalid-argument', '不正な category です');
+        }
+        category = data.category as PlaceCategory;
+      }
+
+      groupUpdate.userEditedLabel = label;
+      groupUpdate.label = label;
+      groupUpdate.category = category;
+      groupUpdate.userConfirmed = true;
+      groupUpdate.source = 'manual' as PlaceGroupSource;
+      groupUpdate.selectedCandidateId = admin.firestore.FieldValue.delete();
+      groupUpdate.selectedProviderPlaceId = admin.firestore.FieldValue.delete();
+    }
+
+    // Phase 12.5G-3: eventMemo 更新（userConfirmed に影響しない）
+    if (hasEventMemo) {
+      const memo = data.eventMemo;
+      if (memo !== null && typeof memo !== 'string') {
+        throw new HttpsError('invalid-argument', 'eventMemo は文字列か null である必要があります');
+      }
+      if (typeof memo === 'string' && memo.length > 200) {
+        throw new HttpsError('invalid-argument', 'eventMemo は200文字以内で入力してください');
+      }
+      groupUpdate.eventMemo = memo ?? null;
+    }
+
+    await groupRef.update(groupUpdate);
+
+    // visitedPlacesSummary を再計算（label 更新時のみ）
+    if (hasLabel) {
+      await recalculateVisitedPlacesSummary(db, noteId);
+    }
 
     console.log(
-      `[updatePlaceGroupManually] noteId=${noteId.slice(0, 8)} uid=***${uid.slice(-4)} placeGroupId=${placeGroupId.slice(0, 8)}`
+      `[updatePlaceGroupManually] noteId=${noteId.slice(0, 8)} uid=***${uid.slice(-4)} placeGroupId=${placeGroupId.slice(0, 8)} hasLabel=${hasLabel} hasEventMemo=${hasEventMemo}`
     );
 
     return { success: true };

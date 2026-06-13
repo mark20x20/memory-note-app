@@ -170,8 +170,11 @@ export async function selectPlaceCandidateCallable(
 export type UpdatePlaceGroupManuallyInput = {
   noteId: string;
   placeGroupId: string;
-  label: string;
-  category: string;
+  /** 場所名。eventMemo のみ更新する場合は省略可能 */
+  label?: string;
+  category?: string;
+  /** Phase 12.5G-3: イベントメモ（省略時は更新しない、null でクリア） */
+  eventMemo?: string | null;
 };
 
 export type UpdatePlaceGroupManuallyResult = {
