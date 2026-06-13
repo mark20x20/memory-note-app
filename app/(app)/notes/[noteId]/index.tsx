@@ -24,6 +24,7 @@ import { MapPreview } from '@/features/map/components/MapPreview';
 import { getPhotoLocationsFromPhotos } from '@/features/map/utils/locationUtils';
 import { AiDiarySection } from '@/features/memoryNotes/components/AiDiarySection';
 import { canEdit, canManageMembers, canGenerateAiDiary, getCurrentUserRole } from '@/features/memoryNotes/utils/permissions';
+import { VisitedPlacesSection } from '@/features/placeIntelligence/components/VisitedPlacesSection';
 
 function formatDate(date: Date): string {
   return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
@@ -168,6 +169,13 @@ export default function NoteDetailScreen() {
             </View>
           </View>
         ) : null}
+
+        {/* ── 訪れた場所セクション（Phase 12.5E 実装） ── */}
+        <VisitedPlacesSection
+          noteId={noteId}
+          note={note}
+          canEdit={!!userCanEdit}
+        />
 
         {/* ── AI日記セクション（Phase 9 実装、Phase 11 で canRegenerate 追加） ── */}
         <View style={styles.section}>
