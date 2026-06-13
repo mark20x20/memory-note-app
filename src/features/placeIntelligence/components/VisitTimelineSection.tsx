@@ -1,7 +1,8 @@
 // Phase 12.5G-1: この日の流れ — 訪問イベントタイムラインコンポーネント
 // Phase 12.5G-2: 写真サムネイル表示
 // Phase 12.5G-3: 要確認バッジ非表示・カードタップ中心・一言メモ表示
-//               enrichNotePlaces を呼ぶ「作成」ボタン（グループ0件時）
+// Phase 12.5G-4: プレビュー寄り整理。タップ先を flows/[placeGroupId] に変更。
+//               「作成」ボタンは削除（編集画面に移動）。
 
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -16,17 +17,13 @@ import { router } from 'expo-router';
 import { colors } from '@/shared/theme/colors';
 import type { PlaceGroupDoc } from '@/features/map/types';
 import { placeGroupRepository } from '@/core/repositories/placeGroupRepository';
-import {
-  enrichNotePlacesCallable,
-  GROUPING_PRESETS,
-} from '@/features/placeIntelligence/api/placeFunctionsClient';
 
 // ── 型 ─────────────────────────────────────────────────────────────────────────
 
 type Props = {
   noteId: string;
   canEdit: boolean;
-  /** NoteDoc.placeEnrichmentStatus（idle 時に「作成」ボタンを出すため） */
+  /** NoteDoc.placeEnrichmentStatus（fetching 中のスピナー表示用） */
   enrichmentStatus?: string | null;
 };
 
@@ -74,8 +71,6 @@ function getThumbnailURLs(group: PlaceGroupDoc): string[] {
 
 export function VisitTimelineSection({ noteId, canEdit, enrichmentStatus }: Props) {
   const [groups, setGroups] = useState<PlaceGroupDoc[]>([]);
-  const [enriching, setEnriching] = useState(false);
-  const [enrichError, setEnrichError] = useState<string | null>(null);
   const unsubRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
@@ -87,32 +82,12 @@ export function VisitTimelineSection({ noteId, canEdit, enrichmentStatus }: Prop
     return () => unsubRef.current?.();
   }, [noteId]);
 
-  async function handleCreateFlow() {
-    setEnriching(true);
-    setEnrichError(null);
-    try {
-      await enrichNotePlacesCallable({
-        noteId,
-        grouping: GROUPING_PRESETS['standard'],
-      });
-    } catch (err: unknown) {
-      const msg = err && typeof err === 'object' && 'message' in err
-        ? String((err as { message: unknown }).message)
-        : '場所の推定に失敗しました';
-      setEnrichError(msg);
-    } finally {
-      setEnriching(false);
-    }
-  }
-
   // fetching 中
   if (enrichmentStatus === 'fetching') {
     return (
       <View style={styles.container}>
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionLabel}>この日の流れ</Text>
-        </View>
-        <View style={[styles.emptyCard, styles.emptyCardCenter]}>
+        <Text style={styles.sectionLabel}>この日の流れ</Text>
+        <View style={[styles.emptyCard, styles.emptyCardRow]}>
           <ActivityIndicator size="small" color={colors.mapAccent} />
           <Text style={styles.fetchingText}>フローを作成中...</Text>
         </View>
@@ -120,33 +95,22 @@ export function VisitTimelineSection({ noteId, canEdit, enrichmentStatus }: Prop
     );
   }
 
-  // グループなし
+  // グループなし → プレビュー画面では控えめな空状態を返す
+  // （「作成」ボタンはノート編集画面に移動）
   if (groups.length === 0) {
-    if (!canEdit) return null;
     return (
       <View style={styles.container}>
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionLabel}>この日の流れ</Text>
-        </View>
+        <Text style={styles.sectionLabel}>この日の流れ</Text>
         <View style={styles.emptyCard}>
           <Text style={styles.emptyEmoji}>📍</Text>
-          <Text style={styles.emptyTitle}>写真からこの日の流れを作成</Text>
-          <Text style={styles.emptyDesc}>
-            GPS 付き写真の撮影時刻・位置情報から、訪れた場所をまとめます。
-          </Text>
-          <TouchableOpacity
-            style={[styles.createButton, enriching && styles.createButtonDisabled]}
-            onPress={handleCreateFlow}
-            disabled={enriching}
-          >
-            {enriching ? (
-              <ActivityIndicator size="small" color={colors.white} />
-            ) : (
-              <Text style={styles.createButtonText}>この日の流れを作成</Text>
-            )}
-          </TouchableOpacity>
-          {enrichError ? (
-            <Text style={styles.errorText}>{enrichError}</Text>
+          <Text style={styles.emptyTitle}>この日の流れはまだ作成されていません</Text>
+          {canEdit ? (
+            <TouchableOpacity
+              onPress={() => router.push(`/(app)/notes/${noteId}/edit`)}
+              hitSlop={8}
+            >
+              <Text style={styles.editLink}>編集画面から作成する</Text>
+            </TouchableOpacity>
           ) : null}
         </View>
       </View>
@@ -155,17 +119,7 @@ export function VisitTimelineSection({ noteId, canEdit, enrichmentStatus }: Prop
 
   return (
     <View style={styles.container}>
-      <View style={styles.sectionHeaderRow}>
-        <Text style={styles.sectionLabel}>この日の流れ</Text>
-        {canEdit ? (
-          <TouchableOpacity
-            onPress={() => router.push(`/(app)/notes/${noteId}/flow-settings`)}
-            hitSlop={8}
-          >
-            <Text style={styles.settingsLink}>分割設定</Text>
-          </TouchableOpacity>
-        ) : null}
-      </View>
+      <Text style={styles.sectionLabel}>この日の流れ</Text>
 
       <View style={styles.timelineList}>
         {groups.map((group, idx) => {
@@ -177,7 +131,7 @@ export function VisitTimelineSection({ noteId, canEdit, enrichmentStatus }: Prop
             <TouchableOpacity
               key={group.id}
               style={styles.timelineItem}
-              onPress={() => router.push(`/(app)/notes/${noteId}/places/${group.id}`)}
+              onPress={() => router.push(`/(app)/notes/${noteId}/flows/${group.id}`)}
               activeOpacity={0.7}
             >
               {/* 左: 番号 + 縦線 */}
@@ -190,7 +144,7 @@ export function VisitTimelineSection({ noteId, canEdit, enrichmentStatus }: Prop
                 {!isLast ? <View style={styles.timelineLine} /> : null}
               </View>
 
-              {/* 右: 時刻・場所名・写真サムネイル・メタ・一言メモ */}
+              {/* 右: 時刻・場所名・写真サムネイル・メモ */}
               <View style={styles.timelineRight}>
                 {timeStr ? (
                   <Text style={styles.timelineTime}>{timeStr}</Text>
@@ -199,7 +153,6 @@ export function VisitTimelineSection({ noteId, canEdit, enrichmentStatus }: Prop
                   <Text style={styles.timelineLabel} numberOfLines={1}>
                     {group.label}
                   </Text>
-                  {/* 右端に小さな編集アイコン代わりの「›」 */}
                   <Text style={styles.chevron}>›</Text>
                 </View>
                 <Text style={styles.timelineMeta}>
@@ -243,23 +196,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 24,
   },
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
   sectionLabel: {
     fontSize: 13,
     fontWeight: '600',
     color: colors.textTertiary,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
-  },
-  settingsLink: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.mapAccent,
+    marginBottom: 12,
   },
   // タイムライン本体
   timelineList: {
@@ -353,7 +296,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.textSecondary,
     fontStyle: 'italic',
-    marginTop: 4,
+    marginTop: 2,
   },
   // 空状態カード
   emptyCard: {
@@ -363,24 +306,19 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     padding: 20,
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
-  emptyCardCenter: {
+  emptyCardRow: {
     flexDirection: 'row',
     justifyContent: 'center',
+    gap: 8,
   },
   emptyEmoji: {
-    fontSize: 28,
-    opacity: 0.5,
+    fontSize: 24,
+    opacity: 0.4,
   },
   emptyTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.textPrimary,
-    textAlign: 'center',
-  },
-  emptyDesc: {
-    fontSize: 13,
+    fontSize: 14,
     color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 20,
@@ -388,27 +326,11 @@ const styles = StyleSheet.create({
   fetchingText: {
     fontSize: 14,
     color: colors.mapAccent,
-    marginLeft: 8,
   },
-  createButton: {
-    backgroundColor: colors.mapAccent,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  createButtonDisabled: {
-    opacity: 0.6,
-  },
-  createButtonText: {
-    fontSize: 14,
+  editLink: {
+    fontSize: 13,
     fontWeight: '600',
-    color: colors.white,
-  },
-  errorText: {
-    fontSize: 12,
-    color: colors.error,
-    textAlign: 'center',
+    color: colors.mapAccent,
+    marginTop: 4,
   },
 });

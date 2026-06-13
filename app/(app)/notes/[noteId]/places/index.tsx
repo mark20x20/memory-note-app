@@ -162,8 +162,8 @@ export default function PlacesIndexScreen() {
                   key={group.id}
                   style={styles.groupCard}
                   onPress={() => {
-                    // viewer は未確認グループの候補操作不可 → 確認済みは常に表示
                     if (!userCanEdit && !isConfirmed) return;
+                    // Phase 12.5G-4: 編集画面（場所候補・メモ修正）へ遷移
                     router.push(`/(app)/notes/${noteId}/places/${group.id}`);
                   }}
                   activeOpacity={userCanEdit || isConfirmed ? 0.7 : 1}

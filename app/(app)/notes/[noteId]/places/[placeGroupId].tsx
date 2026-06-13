@@ -1,4 +1,6 @@
-// Phase 12.5E: 場所候補確認画面 → Phase 12.5G-3: フロー詳細編集画面
+// Phase 12.5E: 場所候補確認画面
+// Phase 12.5G-3: フロー詳細編集画面
+// Phase 12.5G-4: フロー編集画面として明確化
 // Route: /(app)/notes/[noteId]/places/[placeGroupId]
 //
 // 上部: このフロー（時刻・写真サムネイル・場所名・カテゴリ・一言メモ）
@@ -314,7 +316,7 @@ export default function PlaceGroupDetailScreen() {
   if (loading) {
     return (
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-        <ScreenHeader title="フロー詳細" onBack={() => router.back()} />
+        <ScreenHeader title="フローを編集" onBack={() => router.back()} />
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={colors.mapAccent} />
           <Text style={styles.loadingText}>読み込み中...</Text>
@@ -326,7 +328,7 @@ export default function PlaceGroupDetailScreen() {
   if (!group) {
     return (
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-        <ScreenHeader title="フロー詳細" onBack={() => router.back()} />
+        <ScreenHeader title="フローを編集" onBack={() => router.back()} />
         <View style={styles.centered}>
           <Text style={styles.errorEmoji}>🔍</Text>
           <Text style={styles.errorText}>データが見つかりませんでした</Text>
@@ -431,7 +433,7 @@ export default function PlaceGroupDetailScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      <ScreenHeader title="フロー詳細" onBack={() => router.back()} />
+      <ScreenHeader title="フローを編集" onBack={() => router.back()} />
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 

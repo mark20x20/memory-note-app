@@ -5,6 +5,7 @@
 // - viewer: 編集ボタン非表示、AI再生成ボタン非表示
 // Phase 12.5G-3: VisitedPlacesSection を削除。この日の流れを主役に。
 //               地図を訪問イベント地図(EventMapPreview)に変更。
+// Phase 12.5G-4: プレビュー画面として整理。管理UIはノート編集画面に移動。
 
 import { router, useLocalSearchParams } from 'expo-router';
 import {

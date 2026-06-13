@@ -331,7 +331,8 @@ export default function NoteMapScreen() {
                   style={styles.placeCard}
                   onPress={() => {
                     if (!canNavigate) return;
-                    router.push(`/(app)/notes/${noteId}/places/${group.id}`);
+                    // Phase 12.5G-4: 閲覧→flows, 編集→places
+                    router.push(`/(app)/notes/${noteId}/flows/${group.id}`);
                   }}
                   activeOpacity={canNavigate ? 0.7 : 1}
                 >
@@ -368,11 +369,7 @@ export default function NoteMapScreen() {
                   ) : null}
                   {/* 操作テキスト */}
                   {canNavigate ? (
-                    <Text style={styles.cardAction}>
-                      {userCanEdit
-                        ? isConfirmed ? '場所を確認・変更 →' : '候補を確認・変更 →'
-                        : '詳細を見る →'}
-                    </Text>
+                    <Text style={styles.cardAction}>詳細を見る →</Text>
                   ) : null}
                 </TouchableOpacity>
               );

@@ -3,6 +3,7 @@
 // - viewer が URL 直接アクセスした場合は権限エラーを表示し、保存ボタンを無効化
 // - editor は title / memo / noteType / aiDiary を編集可、削除ボタン非表示
 // - owner は全機能を使用可（削除ボタンあり）
+// Phase 12.5G-4: フロー管理セクションを追加。
 
 import { useState, useEffect } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -27,6 +28,10 @@ import { useUpdateNote } from '@/features/memoryNotes/hooks/useUpdateNote';
 import { useDeleteNote } from '@/features/memoryNotes/hooks/useDeleteNote';
 import { canEdit, canDelete } from '@/features/memoryNotes/utils/permissions';
 import type { NoteType } from '@/core/repositories/noteRepository';
+import {
+  enrichNotePlacesCallable,
+  GROUPING_PRESETS,
+} from '@/features/placeIntelligence/api/placeFunctionsClient';
 
 export default function NoteEditScreen() {
   const { noteId } = useLocalSearchParams<{ noteId: string }>();
@@ -44,6 +49,9 @@ export default function NoteEditScreen() {
   const [aiDiary, setAiDiary] = useState('');
   const [initialized, setInitialized] = useState(false);
 
+  // フロー再作成
+  const [recreatingFlow, setRecreatingFlow] = useState(false);
+
   // Phase 11: 権限チェック
   const userCanEdit = uid && note ? canEdit(note, uid) : false;
   const userCanDelete = uid && note ? canDelete(note, uid) : false;
@@ -60,6 +68,39 @@ export default function NoteEditScreen() {
   }, [note, initialized]);
 
   const isBusy = isUpdating || isDeleting;
+
+  async function handleRecreateFlow() {
+    if (!noteId) return;
+    Alert.alert(
+      'この日の流れを再作成',
+      '既存のフロー分割がリセットされます。標準設定（90分間隔）で再作成しますか？',
+      [
+        { text: 'キャンセル', style: 'cancel' },
+        {
+          text: '再作成',
+          onPress: async () => {
+            setRecreatingFlow(true);
+            try {
+              await enrichNotePlacesCallable({
+                noteId,
+                forceRefresh: true,
+                grouping: GROUPING_PRESETS['standard'],
+              });
+              Alert.alert('完了', 'この日の流れを再作成しました。');
+            } catch (err: unknown) {
+              const msg =
+                err && typeof err === 'object' && 'message' in err
+                  ? String((err as { message: unknown }).message)
+                  : '再作成に失敗しました';
+              Alert.alert('エラー', msg);
+            } finally {
+              setRecreatingFlow(false);
+            }
+          },
+        },
+      ]
+    );
+  }
 
   const hasAiDiary =
     note?.aiDiaryStatus === 'completed' ||
@@ -279,6 +320,34 @@ export default function NoteEditScreen() {
             </View>
           ) : null}
 
+          {/* ── この日の流れ（フロー管理） ── */}
+          <View style={styles.flowSection}>
+            <Text style={styles.flowSectionTitle}>この日の流れ</Text>
+            <Text style={styles.flowSectionDesc}>
+              写真の撮影時間と位置情報から、1日の流れを作成・管理できます。
+            </Text>
+            <View style={styles.flowButtonRow}>
+              <TouchableOpacity
+                style={styles.flowButton}
+                onPress={() => router.push(`/(app)/notes/${noteId}/flow-settings`)}
+                disabled={isBusy}
+              >
+                <Text style={styles.flowButtonText}>フロー分割設定</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.flowButton, recreatingFlow && styles.flowButtonDisabled]}
+                onPress={handleRecreateFlow}
+                disabled={isBusy || recreatingFlow}
+              >
+                {recreatingFlow ? (
+                  <ActivityIndicator size="small" color={colors.mapAccent} />
+                ) : (
+                  <Text style={styles.flowButtonText}>この日の流れを再作成</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+
           {/* 保存ボタン（スクロール内でも押せるよう補助） */}
           <TouchableOpacity
             style={[styles.primaryButton, isBusy && styles.buttonDisabled]}
@@ -479,5 +548,44 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.5,
+  },
+  // フロー管理セクション
+  flowSection: {
+    gap: 10,
+    backgroundColor: colors.surfaceIvory,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 16,
+  },
+  flowSectionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  flowSectionDesc: {
+    fontSize: 12,
+    color: colors.textTertiary,
+    lineHeight: 18,
+  },
+  flowButtonRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  flowButton: {
+    flex: 1,
+    borderWidth: 1.5,
+    borderColor: colors.mapAccent,
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  flowButtonDisabled: {
+    opacity: 0.6,
+  },
+  flowButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.mapAccent,
   },
 });
