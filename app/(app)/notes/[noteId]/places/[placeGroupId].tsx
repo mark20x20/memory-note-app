@@ -1,8 +1,12 @@
 // Phase 12.5E: 場所候補確認画面
+// Phase 12.5E-2: UX改善
+//   - 手動入力導線を画面上部に移動
+//   - 候補カードに番号表示 (#1, #2, ...)
+//   - カテゴリタグ表示
+//   - カテゴリフィルタチップ（横スクロール）追加
+//   - 候補を distanceMeters 昇順で統一表示（priority / other 分類を廃止）
 // Route: /(app)/notes/[noteId]/places/[placeGroupId]
 //
-// 特定の PlaceGroup に対して候補一覧を表示し、ユーザーが1件を選択できる。
-// 候補が適切でない場合は手動入力画面へ遷移できる。
 // viewer は閲覧のみ（選択・修正不可）。
 
 import { useEffect, useState } from 'react';
@@ -26,28 +30,28 @@ import { selectPlaceCandidateCallable } from '@/features/placeIntelligence/api/p
 import { canEdit } from '@/features/memoryNotes/utils/permissions';
 import type { PlaceGroupDoc, PlaceCandidateDoc } from '@/features/map/types';
 
-// ── 候補カテゴリ分類 ──────────────────────────────────────────────────────────
+// ── カテゴリフィルタ定義 ──────────────────────────────────────────────────────
 
-const PRIORITY_TYPES = new Set([
-  'restaurant',
-  'food',
-  'cafe',
-  'coffee_shop',
-  'tourist_attraction',
-  'museum',
-  'park',
-  'hotel',
-  'lodging',
-  'shopping_mall',
-  'store',
-  'transit_station',
-  'train_station',
-  'subway_station',
-]);
+type CategoryFilter = {
+  key: string;
+  label: string;
+  types: string[];
+};
 
-function isPriorityCandidate(candidate: PlaceCandidateDoc): boolean {
-  return candidate.types.some((t) => PRIORITY_TYPES.has(t));
-}
+const CATEGORY_FILTERS: CategoryFilter[] = [
+  { key: 'all', label: 'すべて', types: [] },
+  { key: 'restaurant', label: 'レストラン', types: ['restaurant', 'food', 'meal_takeaway', 'meal_delivery'] },
+  { key: 'cafe', label: 'カフェ', types: ['cafe', 'coffee_shop', 'bakery'] },
+  { key: 'tourist', label: '観光地', types: ['tourist_attraction', 'landmark', 'point_of_interest', 'natural_feature'] },
+  { key: 'station', label: '駅', types: ['transit_station', 'train_station', 'subway_station', 'bus_station', 'bus_stop', 'light_rail_station'] },
+  { key: 'hotel', label: 'ホテル', types: ['hotel', 'lodging', 'motel'] },
+  { key: 'shopping', label: 'ショッピング', types: ['shopping_mall', 'store', 'clothing_store', 'department_store', 'convenience_store', 'supermarket'] },
+  { key: 'park', label: '公園', types: ['park', 'playground', 'campground'] },
+  { key: 'museum', label: '美術館・博物館', types: ['museum', 'art_gallery', 'library'] },
+  { key: 'other', label: 'その他', types: [] }, // 上記いずれにも一致しないもの
+];
+
+// ── ヘルパー関数 ──────────────────────────────────────────────────────────────
 
 function getCategoryLabel(category: string): string {
   const map: Record<string, string> = {
@@ -65,33 +69,74 @@ function getCategoryLabel(category: string): string {
   return map[category] ?? category;
 }
 
+/** candidate の types から最初に一致するカテゴリフィルターキーを返す */
+function getCandidateCategoryKey(types: string[]): string {
+  for (const filter of CATEGORY_FILTERS) {
+    if (filter.key === 'all' || filter.key === 'other') continue;
+    if (types.some((t) => filter.types.includes(t))) return filter.key;
+  }
+  return 'other';
+}
+
+/** candidate の types から最初に一致する日本語ラベルを返す */
+function getCandidateCategoryLabel(types: string[]): string {
+  const labelMap: Record<string, string> = {
+    restaurant: 'レストラン',
+    food: '飲食',
+    meal_takeaway: 'テイクアウト',
+    cafe: 'カフェ',
+    coffee_shop: 'カフェ',
+    bakery: 'ベーカリー',
+    tourist_attraction: '観光地',
+    landmark: 'ランドマーク',
+    natural_feature: '自然',
+    museum: '美術館・博物館',
+    art_gallery: 'ギャラリー',
+    library: '図書館',
+    park: '公園',
+    playground: '公園',
+    hotel: 'ホテル',
+    lodging: '宿泊',
+    shopping_mall: 'ショッピング',
+    store: '店舗',
+    convenience_store: 'コンビニ',
+    supermarket: 'スーパー',
+    transit_station: '交通機関',
+    train_station: '鉄道駅',
+    subway_station: '地下鉄駅',
+    bus_station: 'バス停',
+    locality: '地区',
+    neighborhood: '近隣',
+    point_of_interest: 'スポット',
+  };
+  for (const t of types) {
+    if (labelMap[t]) return labelMap[t];
+  }
+  return 'その他';
+}
+
 function formatDistance(meters?: number): string {
   if (meters == null) return '';
   if (meters < 1000) return `${Math.round(meters)}m`;
   return `${(meters / 1000).toFixed(1)}km`;
 }
 
-function getTypeLabels(types: string[]): string {
-  const labelMap: Record<string, string> = {
-    restaurant: 'レストラン',
-    food: '飲食',
-    cafe: 'カフェ',
-    coffee_shop: 'カフェ',
-    tourist_attraction: '観光地',
-    museum: '美術館・博物館',
-    park: '公園',
-    hotel: 'ホテル',
-    lodging: '宿泊',
-    shopping_mall: 'ショッピング',
-    store: '店舗',
-    transit_station: '交通機関',
-    train_station: '鉄道駅',
-    subway_station: '地下鉄駅',
-    locality: '地区',
-    neighborhood: '近隣',
-  };
-  const labels = types.slice(0, 2).map((t) => labelMap[t] ?? t).filter(Boolean);
-  return labels.join(' · ');
+function filterCandidates(
+  candidates: PlaceCandidateDoc[],
+  filterKey: string
+): PlaceCandidateDoc[] {
+  if (filterKey === 'all') return candidates;
+  if (filterKey === 'other') {
+    // 他のカテゴリのどれにも一致しないもの
+    return candidates.filter(
+      (c) => getCandidateCategoryKey(c.types) === 'other'
+    );
+  }
+  const filter = CATEGORY_FILTERS.find((f) => f.key === filterKey);
+  if (!filter) return candidates;
+  return candidates.filter((c) =>
+    c.types.some((t) => filter.types.includes(t))
+  );
 }
 
 // ── コンポーネント ────────────────────────────────────────────────────────────
@@ -109,6 +154,7 @@ export default function PlaceGroupDetailScreen() {
   const [candidates, setCandidates] = useState<PlaceCandidateDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [selecting, setSelecting] = useState<string | null>(null);
+  const [activeFilter, setActiveFilter] = useState<string>('all');
 
   const userCanEdit = uid && note ? canEdit(note, uid) : false;
 
@@ -143,10 +189,7 @@ export default function PlaceGroupDetailScreen() {
         candidateId: candidate.id,
       });
       Alert.alert('確定しました', `「${candidate.name}」を訪れた場所として確定しました。`, [
-        {
-          text: 'OK',
-          onPress: () => router.back(),
-        },
+        { text: 'OK', onPress: () => router.back() },
       ]);
     } catch (err: unknown) {
       const msg = err && typeof err === 'object' && 'message' in err
@@ -182,69 +225,8 @@ export default function PlaceGroupDetailScreen() {
     );
   }
 
-  // 候補を priority / other に分類
-  const priorityCandidates = candidates.filter(isPriorityCandidate);
-  const otherCandidates = candidates.filter((c) => !isPriorityCandidate(c));
-
+  const filteredCandidates = filterCandidates(candidates, activeFilter);
   const isSelected = (c: PlaceCandidateDoc) => c.id === group.selectedCandidateId;
-
-  function renderCandidate(candidate: PlaceCandidateDoc) {
-    const selected = isSelected(candidate);
-    const isLoading = selecting === candidate.id;
-    return (
-      <View
-        key={candidate.id}
-        style={[styles.candidateCard, selected && styles.candidateCardSelected]}
-      >
-        <View style={styles.candidateInfo}>
-          {selected ? (
-            <View style={styles.selectedBadge}>
-              <Text style={styles.selectedBadgeText}>選択中</Text>
-            </View>
-          ) : null}
-          <Text style={styles.candidateName}>{candidate.name}</Text>
-          <View style={styles.candidateMeta}>
-            {candidate.distanceMeters != null ? (
-              <Text style={styles.candidateMetaItem}>
-                {formatDistance(candidate.distanceMeters)}
-              </Text>
-            ) : null}
-            {candidate.rating != null ? (
-              <Text style={styles.candidateMetaItem}>★ {candidate.rating.toFixed(1)}</Text>
-            ) : null}
-            {candidate.types.length > 0 ? (
-              <Text style={styles.candidateMetaItem}>{getTypeLabels(candidate.types)}</Text>
-            ) : null}
-          </View>
-          {candidate.address ? (
-            <Text style={styles.candidateAddress} numberOfLines={1}>
-              {candidate.address}
-            </Text>
-          ) : null}
-        </View>
-
-        {userCanEdit ? (
-          <TouchableOpacity
-            style={[
-              styles.selectButton,
-              selected && styles.selectButtonSelected,
-              isLoading && styles.selectButtonLoading,
-            ]}
-            onPress={() => handleSelect(candidate)}
-            disabled={isLoading || !!selecting}
-          >
-            {isLoading ? (
-              <ActivityIndicator size="small" color={selected ? colors.white : colors.mapAccent} />
-            ) : (
-              <Text style={[styles.selectButtonText, selected && styles.selectButtonTextSelected]}>
-                {selected ? '確定済み' : '選択'}
-              </Text>
-            )}
-          </TouchableOpacity>
-        ) : null}
-      </View>
-    );
-  }
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -256,60 +238,188 @@ export default function PlaceGroupDetailScreen() {
         <View style={styles.section}>
           <View style={styles.currentGroupCard}>
             <Text style={styles.currentGroupLabel}>{group.label}</Text>
-            <Text style={styles.currentGroupCategory}>{getCategoryLabel(group.category)}</Text>
-            <View style={styles.currentGroupMeta}>
+            <View style={styles.currentGroupTagRow}>
+              <View style={styles.categoryTag}>
+                <Text style={styles.categoryTagText}>{getCategoryLabel(group.category)}</Text>
+              </View>
               {group.photoCount > 0 ? (
-                <Text style={styles.metaChip}>写真 {group.photoCount}枚</Text>
+                <Text style={styles.metaText}>写真 {group.photoCount}枚</Text>
               ) : null}
-              <Text style={[styles.metaChip, group.userConfirmed ? styles.confirmedChip : styles.pendingChip]}>
-                {group.userConfirmed ? '確認済み' : '未確認'}
-              </Text>
+              <View style={[
+                styles.confirmedBadge,
+                { backgroundColor: (group.userConfirmed ? colors.success : colors.warning) + '22' }
+              ]}>
+                <Text style={[
+                  styles.confirmedBadgeText,
+                  { color: group.userConfirmed ? colors.success : colors.warning }
+                ]}>
+                  {group.userConfirmed ? '確認済み' : '未確認'}
+                </Text>
+              </View>
             </View>
           </View>
         </View>
 
-        {/* ── 候補なし ── */}
+        {/* ── 手動入力バナー（owner/editor のみ、上部に配置） ── */}
+        {userCanEdit ? (
+          <View style={styles.section}>
+            <View style={styles.manualBanner}>
+              <View style={styles.manualBannerLeft}>
+                <Text style={styles.manualBannerTitle}>候補にない場合</Text>
+                <Text style={styles.manualBannerDesc}>
+                  正しい場所がなければ、場所名を手動で入力できます。
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.manualBannerButton}
+                onPress={() =>
+                  router.push(
+                    `/(app)/notes/${noteId}/places/manual?placeGroupId=${placeGroupId}`
+                  )
+                }
+              >
+                <Text style={styles.manualBannerButtonText}>手動で入力</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : null}
+
+        {/* ── カテゴリフィルタ ── */}
+        {candidates.length > 0 ? (
+          <View style={styles.filterSection}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.filterScrollContent}
+            >
+              {CATEGORY_FILTERS.map((filter) => {
+                const isActive = activeFilter === filter.key;
+                const count = filter.key === 'all'
+                  ? candidates.length
+                  : filterCandidates(candidates, filter.key).length;
+                if (filter.key !== 'all' && count === 0) return null;
+                return (
+                  <TouchableOpacity
+                    key={filter.key}
+                    style={[styles.filterChip, isActive && styles.filterChipActive]}
+                    onPress={() => setActiveFilter(filter.key)}
+                  >
+                    <Text style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>
+                      {filter.label}
+                      {filter.key !== 'all' ? ` ${count}` : ''}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        ) : null}
+
+        {/* ── 候補なし（全体） ── */}
         {candidates.length === 0 ? (
           <View style={styles.section}>
             <View style={styles.emptyBox}>
               <Text style={styles.emptyEmoji}>🔍</Text>
               <Text style={styles.emptyTitle}>候補が見つかりませんでした</Text>
-              <Text style={styles.emptyDesc}>
-                手動で場所を入力してください。
-              </Text>
+              <Text style={styles.emptyDesc}>手動で場所を入力してください。</Text>
             </View>
           </View>
         ) : null}
 
-        {/* ── 訪問候補（restaurant/cafe/観光地/駅など） ── */}
-        {priorityCandidates.length > 0 ? (
+        {/* ── フィルタ後の候補リスト ── */}
+        {candidates.length > 0 ? (
           <View style={styles.section}>
-            <Text style={styles.groupTitle}>訪問候補</Text>
-            {priorityCandidates.map(renderCandidate)}
-          </View>
-        ) : null}
+            {filteredCandidates.length === 0 ? (
+              <View style={styles.filterEmptyBox}>
+                <Text style={styles.filterEmptyText}>
+                  このカテゴリの候補はありません
+                </Text>
+              </View>
+            ) : (
+              filteredCandidates.map((candidate, index) => {
+                const selected = isSelected(candidate);
+                const isLoading = selecting === candidate.id;
+                const globalIndex = candidates.indexOf(candidate);
+                const candidateNumber = globalIndex + 1;
+                const catLabel = getCandidateCategoryLabel(candidate.types);
 
-        {/* ── その他の近隣候補 ── */}
-        {otherCandidates.length > 0 ? (
-          <View style={styles.section}>
-            <Text style={styles.groupTitle}>その他の近隣</Text>
-            {otherCandidates.map(renderCandidate)}
-          </View>
-        ) : null}
+                return (
+                  <View
+                    key={candidate.id}
+                    style={[styles.candidateCard, selected && styles.candidateCardSelected]}
+                  >
+                    {/* 番号バッジ */}
+                    <View style={[styles.numberBadge, selected && styles.numberBadgeSelected]}>
+                      <Text style={[styles.numberText, selected && styles.numberTextSelected]}>
+                        #{candidateNumber}
+                      </Text>
+                    </View>
 
-        {/* ── 手動入力ボタン（owner/editor のみ） ── */}
-        {userCanEdit ? (
-          <View style={styles.section}>
-            <TouchableOpacity
-              style={styles.manualButton}
-              onPress={() =>
-                router.push(
-                  `/(app)/notes/${noteId}/places/manual?placeGroupId=${placeGroupId}`
-                )
-              }
-            >
-              <Text style={styles.manualButtonText}>候補にない場所を手動で入力</Text>
-            </TouchableOpacity>
+                    <View style={styles.candidateBody}>
+                      {/* 候補名 */}
+                      <View style={styles.candidateNameRow}>
+                        {selected ? (
+                          <View style={styles.selectedBadge}>
+                            <Text style={styles.selectedBadgeText}>選択中</Text>
+                          </View>
+                        ) : null}
+                        <Text style={styles.candidateName}>{candidate.name}</Text>
+                      </View>
+
+                      {/* カテゴリタグ + メタ情報 */}
+                      <View style={styles.candidateTagRow}>
+                        <View style={styles.candidateCategoryTag}>
+                          <Text style={styles.candidateCategoryTagText}>{catLabel}</Text>
+                        </View>
+                        {candidate.distanceMeters != null ? (
+                          <Text style={styles.candidateMetaItem}>
+                            {formatDistance(candidate.distanceMeters)}
+                          </Text>
+                        ) : null}
+                        {candidate.rating != null ? (
+                          <Text style={styles.candidateMetaItem}>
+                            ★ {candidate.rating.toFixed(1)}
+                          </Text>
+                        ) : null}
+                      </View>
+
+                      {candidate.address ? (
+                        <Text style={styles.candidateAddress} numberOfLines={1}>
+                          {candidate.address}
+                        </Text>
+                      ) : null}
+                    </View>
+
+                    {/* 選択ボタン */}
+                    {userCanEdit ? (
+                      <TouchableOpacity
+                        style={[
+                          styles.selectButton,
+                          selected && styles.selectButtonSelected,
+                          isLoading && styles.selectButtonLoading,
+                        ]}
+                        onPress={() => handleSelect(candidate)}
+                        disabled={isLoading || !!selecting}
+                      >
+                        {isLoading ? (
+                          <ActivityIndicator
+                            size="small"
+                            color={selected ? colors.white : colors.mapAccent}
+                          />
+                        ) : (
+                          <Text style={[
+                            styles.selectButtonText,
+                            selected && styles.selectButtonTextSelected,
+                          ]}>
+                            {selected ? '確定済み' : '選択'}
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                );
+              })
+            )}
           </View>
         ) : null}
 
@@ -348,7 +458,7 @@ const styles = StyleSheet.create({
   },
   section: {
     paddingHorizontal: 20,
-    paddingTop: 20,
+    paddingTop: 16,
   },
   // 現在の場所情報カード
   currentGroupCard: {
@@ -357,125 +467,110 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.mapAccent + '44',
     padding: 16,
+    gap: 10,
   },
   currentGroupLabel: {
     fontSize: 18,
     fontWeight: '700',
     color: colors.textPrimary,
-    marginBottom: 4,
   },
-  currentGroupCategory: {
-    fontSize: 13,
-    color: colors.mapAccent,
-    marginBottom: 10,
-  },
-  currentGroupMeta: {
+  currentGroupTagRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
     flexWrap: 'wrap',
   },
-  metaChip: {
-    backgroundColor: colors.surface,
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    fontSize: 12,
-    color: colors.textSecondary,
-    overflow: 'hidden',
+  categoryTag: {
+    backgroundColor: colors.mapAccent + '33',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
   },
-  confirmedChip: {
-    color: colors.success,
-  },
-  pendingChip: {
-    color: colors.warning,
-  },
-  // 候補グループタイトル
-  groupTitle: {
-    fontSize: 13,
+  categoryTagText: {
+    fontSize: 11,
     fontWeight: '600',
-    color: colors.textTertiary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-    marginBottom: 10,
+    color: colors.mapAccent,
   },
-  // 候補カード
-  candidateCard: {
-    backgroundColor: colors.surface,
+  metaText: {
+    fontSize: 12,
+    color: colors.mapAccent,
+  },
+  confirmedBadge: {
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+  },
+  confirmedBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  // 手動入力バナー
+  manualBanner: {
+    backgroundColor: colors.surfaceIvory,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.border,
     padding: 14,
-    marginBottom: 8,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
   },
-  candidateCardSelected: {
-    borderColor: colors.mapAccent,
-    backgroundColor: colors.mapAccentLight,
-  },
-  candidateInfo: {
+  manualBannerLeft: {
     flex: 1,
-    gap: 3,
+    gap: 2,
   },
-  selectedBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: colors.mapAccent,
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    marginBottom: 4,
-  },
-  selectedBadgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: colors.white,
-  },
-  candidateName: {
-    fontSize: 15,
+  manualBannerTitle: {
+    fontSize: 13,
     fontWeight: '600',
     color: colors.textPrimary,
   },
-  candidateMeta: {
-    flexDirection: 'row',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  candidateMetaItem: {
+  manualBannerDesc: {
     fontSize: 12,
     color: colors.textSecondary,
+    lineHeight: 17,
   },
-  candidateAddress: {
-    fontSize: 11,
-    color: colors.textTertiary,
-    marginTop: 2,
-  },
-  // 選択ボタン
-  selectButton: {
+  manualBannerButton: {
     borderWidth: 1.5,
-    borderColor: colors.mapAccent,
+    borderColor: colors.primary,
     borderRadius: 10,
     paddingVertical: 8,
     paddingHorizontal: 14,
-    alignItems: 'center',
-    minWidth: 64,
   },
-  selectButtonSelected: {
-    backgroundColor: colors.mapAccent,
-    borderColor: colors.mapAccent,
-  },
-  selectButtonLoading: {
-    opacity: 0.6,
-  },
-  selectButtonText: {
+  manualBannerButtonText: {
     fontSize: 13,
     fontWeight: '600',
+    color: colors.primary,
+  },
+  // カテゴリフィルタ
+  filterSection: {
+    paddingTop: 16,
+  },
+  filterScrollContent: {
+    paddingHorizontal: 20,
+    gap: 8,
+  },
+  filterChip: {
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    backgroundColor: colors.surface,
+  },
+  filterChipActive: {
+    borderColor: colors.mapAccent,
+    backgroundColor: colors.mapAccentLight,
+  },
+  filterChipText: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    fontWeight: '500',
+  },
+  filterChipTextActive: {
     color: colors.mapAccent,
+    fontWeight: '600',
   },
-  selectButtonTextSelected: {
-    color: colors.white,
-  },
-  // 空状態
+  // 候補なし
   emptyBox: {
     backgroundColor: colors.surface,
     borderRadius: 14,
@@ -499,17 +594,129 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: 'center',
   },
-  // 手動入力ボタン
-  manualButton: {
-    borderWidth: 1.5,
-    borderColor: colors.mapAccent,
+  filterEmptyBox: {
+    backgroundColor: colors.surface,
     borderRadius: 12,
-    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: 20,
     alignItems: 'center',
   },
-  manualButtonText: {
+  filterEmptyText: {
+    fontSize: 13,
+    color: colors.textTertiary,
+  },
+  // 候補カード
+  candidateCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 12,
+    marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  candidateCardSelected: {
+    borderColor: colors.mapAccent,
+    backgroundColor: colors.mapAccentLight,
+  },
+  // 番号バッジ
+  numberBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    marginTop: 2,
+  },
+  numberBadgeSelected: {
+    backgroundColor: colors.mapAccent,
+  },
+  numberText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textSecondary,
+  },
+  numberTextSelected: {
+    color: colors.white,
+  },
+  candidateBody: {
+    flex: 1,
+    gap: 4,
+  },
+  candidateNameRow: {
+    gap: 4,
+  },
+  selectedBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.mapAccent,
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  selectedBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.white,
+  },
+  candidateName: {
     fontSize: 14,
     fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  candidateTagRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  candidateCategoryTag: {
+    backgroundColor: colors.surfaceIvory,
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  candidateCategoryTagText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  candidateMetaItem: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  candidateAddress: {
+    fontSize: 11,
+    color: colors.textTertiary,
+  },
+  // 選択ボタン
+  selectButton: {
+    borderWidth: 1.5,
+    borderColor: colors.mapAccent,
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    minWidth: 60,
+    flexShrink: 0,
+  },
+  selectButtonSelected: {
+    backgroundColor: colors.mapAccent,
+    borderColor: colors.mapAccent,
+  },
+  selectButtonLoading: {
+    opacity: 0.6,
+  },
+  selectButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
     color: colors.mapAccent,
+  },
+  selectButtonTextSelected: {
+    color: colors.white,
   },
 });

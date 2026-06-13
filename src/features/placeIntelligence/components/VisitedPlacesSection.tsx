@@ -1,4 +1,8 @@
 // Phase 12.5E: 訪れた場所セクション — ノート詳細画面に挿入するコンポーネント
+// Phase 12.5E-2: UX改善
+//   - 「候補を再取得」ボタンを __DEV__ 限定に変更
+//   - カードタップではなく明示ボタン「候補を確認・変更」で遷移
+//   - カテゴリタグを表示
 //
 // 表示ロジック:
 //   idle     → 「場所を推定する」ボタン
@@ -180,32 +184,42 @@ export function VisitedPlacesSection({ noteId, note, canEdit }: Props) {
           <Text style={styles.seeAllLink}>すべて見る</Text>
         </TouchableOpacity>
       </View>
-      <Text style={styles.descText}>
-        近くの施設候補です。違う場合は、候補から選ぶか手動で入力してください。
-      </Text>
 
       {topGroups.map((group) => {
         const badge = getStatusBadge(group);
+        const categoryLabel = getCategoryLabel(group.category);
         return (
-          <TouchableOpacity
-            key={group.id}
-            style={styles.groupCard}
-            onPress={() => router.push(`/(app)/notes/${noteId}/places/${group.id}`)}
-            activeOpacity={0.7}
-          >
-            <View style={styles.groupCardLeft}>
-              <Text style={styles.groupLabel}>{group.label}</Text>
-              <Text style={styles.groupMeta}>
-                {getCategoryLabel(group.category)}
-                {group.photoCount > 0 ? ` · 写真${group.photoCount}枚` : ''}
-              </Text>
+          <View key={group.id} style={styles.groupCard}>
+            {/* ── カード上部: ラベル + 確認済みバッジ ── */}
+            <View style={styles.groupCardHeader}>
+              <Text style={styles.groupLabel} numberOfLines={1}>{group.label}</Text>
+              <View style={[styles.statusBadge, { backgroundColor: badge.color + '22' }]}>
+                <Text style={[styles.statusBadgeText, { color: badge.color }]}>
+                  {badge.label}
+                </Text>
+              </View>
             </View>
-            <View style={[styles.statusBadge, { backgroundColor: badge.color + '22' }]}>
-              <Text style={[styles.statusBadgeText, { color: badge.color }]}>
-                {badge.label}
-              </Text>
+
+            {/* ── カテゴリタグ + 写真枚数 ── */}
+            <View style={styles.groupTagRow}>
+              <View style={styles.categoryTag}>
+                <Text style={styles.categoryTagText}>{categoryLabel}</Text>
+              </View>
+              {group.photoCount > 0 ? (
+                <Text style={styles.photoCountText}>写真 {group.photoCount}枚</Text>
+              ) : null}
             </View>
-          </TouchableOpacity>
+
+            {/* ── 「候補を確認・変更」ボタン（owner/editor のみ） ── */}
+            {canEdit ? (
+              <TouchableOpacity
+                style={styles.confirmButton}
+                onPress={() => router.push(`/(app)/notes/${noteId}/places/${group.id}`)}
+              >
+                <Text style={styles.confirmButtonText}>候補を確認・変更</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
         );
       })}
 
@@ -218,16 +232,17 @@ export function VisitedPlacesSection({ noteId, note, canEdit }: Props) {
         </TouchableOpacity>
       ) : null}
 
-      {canEdit ? (
+      {/* __DEV__ 限定: 候補を再取得ボタン */}
+      {__DEV__ && canEdit ? (
         <TouchableOpacity
-          style={[styles.outlineButton, styles.outlineButtonSmall, enriching && styles.outlineButtonDisabled]}
+          style={[styles.devButton, enriching && styles.devButtonDisabled]}
           onPress={handleEnrich}
           disabled={enriching}
         >
           {enriching ? (
-            <ActivityIndicator size="small" color={colors.mapAccent} />
+            <ActivityIndicator size="small" color={colors.textTertiary} />
           ) : (
-            <Text style={styles.outlineButtonText}>候補を再取得</Text>
+            <Text style={styles.devButtonText}>[DEV] 候補を再取得</Text>
           )}
         </TouchableOpacity>
       ) : null}
@@ -254,18 +269,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginBottom: 12,
   },
   seeAllLink: {
     fontSize: 13,
     fontWeight: '600',
     color: colors.mapAccent,
-  },
-  descText: {
-    fontSize: 13,
-    color: colors.textTertiary,
-    marginBottom: 12,
-    lineHeight: 18,
   },
   card: {
     backgroundColor: colors.surface,
@@ -333,33 +342,64 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     padding: 14,
+    marginBottom: 10,
+    gap: 8,
+  },
+  groupCardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  groupCardLeft: {
-    flex: 1,
-    gap: 3,
-    marginRight: 12,
+    gap: 8,
   },
   groupLabel: {
+    flex: 1,
     fontSize: 15,
     fontWeight: '600',
     color: colors.textPrimary,
-  },
-  groupMeta: {
-    fontSize: 12,
-    color: colors.textSecondary,
   },
   statusBadge: {
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 4,
+    flexShrink: 0,
   },
   statusBadgeText: {
     fontSize: 11,
     fontWeight: '600',
+  },
+  groupTagRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  categoryTag: {
+    backgroundColor: colors.mapAccentLight,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  categoryTagText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.mapAccent,
+  },
+  photoCountText: {
+    fontSize: 12,
+    color: colors.textTertiary,
+  },
+  // 「候補を確認・変更」ボタン
+  confirmButton: {
+    borderWidth: 1.5,
+    borderColor: colors.mapAccent,
+    borderRadius: 10,
+    paddingVertical: 9,
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  confirmButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.mapAccent,
   },
   moreLink: {
     paddingVertical: 8,
@@ -396,10 +436,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 8,
   },
-  outlineButtonSmall: {
-    paddingVertical: 10,
-    marginTop: 4,
-  },
   outlineButtonDisabled: {
     opacity: 0.5,
   },
@@ -407,5 +443,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: colors.mapAccent,
+  },
+  // __DEV__ 再取得ボタン
+  devButton: {
+    marginTop: 8,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    borderStyle: 'dashed',
+  },
+  devButtonDisabled: {
+    opacity: 0.5,
+  },
+  devButtonText: {
+    fontSize: 12,
+    color: colors.textTertiary,
   },
 });

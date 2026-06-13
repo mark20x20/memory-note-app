@@ -1,7 +1,10 @@
 // Phase 12.5E: 訪れた場所一覧画面
+// Phase 12.5E-2: UX改善
+//   - PlaceGroup カードにカテゴリタグを表示
+//   - 「候補を確認・変更」明示ボタンを追加
+//   - 「手動で場所を追加」ボタンを削除（placeGroupId なしでは保存不可のため）
 // Route: /(app)/notes/[noteId]/places
 //
-// ノート内のすべての PlaceGroup を一覧表示する。
 // owner/editor: 再推定ボタン・候補確認への遷移が可能
 // viewer: 確定済み場所の閲覧のみ（未確定候補の操作不可）
 
@@ -153,17 +156,11 @@ export default function PlacesIndexScreen() {
             groups.map((group) => {
               const badge = getStatusBadge(group);
               const isConfirmed = group.userConfirmed;
+              const categoryLabel = getCategoryLabel(group.category);
+
               return (
-                <TouchableOpacity
-                  key={group.id}
-                  style={styles.groupCard}
-                  onPress={() => {
-                    // viewer は未確認グループの候補操作不可 → 確認済みは常に表示
-                    if (!userCanEdit && !isConfirmed) return;
-                    router.push(`/(app)/notes/${noteId}/places/${group.id}`);
-                  }}
-                  activeOpacity={userCanEdit || isConfirmed ? 0.7 : 1}
-                >
+                <View key={group.id} style={styles.groupCard}>
+                  {/* ── ヘッダー行: ラベル + 確認済みバッジ ── */}
                   <View style={styles.groupCardHeader}>
                     <Text style={styles.groupLabel} numberOfLines={1}>
                       {group.label}
@@ -175,38 +172,44 @@ export default function PlacesIndexScreen() {
                     </View>
                   </View>
 
-                  <Text style={styles.groupCategory}>
-                    {getCategoryLabel(group.category)}
-                  </Text>
-
-                  <View style={styles.groupMeta}>
+                  {/* ── カテゴリタグ + 写真枚数 ── */}
+                  <View style={styles.groupTagRow}>
+                    <View style={styles.categoryTag}>
+                      <Text style={styles.categoryTagText}>{categoryLabel}</Text>
+                    </View>
                     {group.photoCount > 0 ? (
-                      <Text style={styles.groupMetaItem}>写真 {group.photoCount}枚</Text>
-                    ) : null}
-                    {!isConfirmed && userCanEdit ? (
-                      <Text style={styles.groupMetaAction}>→ 候補を確認</Text>
-                    ) : null}
-                    {!isConfirmed && !userCanEdit ? (
-                      <Text style={styles.groupMetaUnconfirmed}>未確認</Text>
+                      <Text style={styles.photoCountText}>写真 {group.photoCount}枚</Text>
                     ) : null}
                   </View>
-                </TouchableOpacity>
+
+                  {/* ── 候補を確認・変更ボタン（owner/editor のみ） ── */}
+                  {userCanEdit ? (
+                    <TouchableOpacity
+                      style={styles.confirmButton}
+                      onPress={() =>
+                        router.push(`/(app)/notes/${noteId}/places/${group.id}`)
+                      }
+                    >
+                      <Text style={styles.confirmButtonText}>
+                        {isConfirmed ? '場所を確認・変更' : '候補を確認・変更'}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : isConfirmed ? (
+                    // viewer でも確認済み場所は詳細を見られる
+                    <TouchableOpacity
+                      style={styles.viewButton}
+                      onPress={() =>
+                        router.push(`/(app)/notes/${noteId}/places/${group.id}`)
+                      }
+                    >
+                      <Text style={styles.viewButtonText}>詳細を見る</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
               );
             })
           )}
         </View>
-
-        {/* ── 手動追加ボタン（owner/editor のみ） ── */}
-        {userCanEdit ? (
-          <View style={styles.section}>
-            <TouchableOpacity
-              style={styles.manualButton}
-              onPress={() => router.push(`/(app)/notes/${noteId}/places/manual`)}
-            >
-              <Text style={styles.manualButtonText}>+ 手動で場所を追加</Text>
-            </TouchableOpacity>
-          </View>
-        ) : null}
 
       </ScrollView>
     </SafeAreaView>
@@ -297,12 +300,12 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     padding: 16,
     marginBottom: 10,
+    gap: 10,
   },
   groupCardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 4,
     gap: 8,
   },
   groupLabel: {
@@ -321,39 +324,49 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
   },
-  groupCategory: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    marginBottom: 8,
-  },
-  groupMeta: {
+  groupTagRow: {
     flexDirection: 'row',
-    gap: 12,
+    alignItems: 'center',
+    gap: 8,
   },
-  groupMetaItem: {
-    fontSize: 12,
-    color: colors.textTertiary,
+  categoryTag: {
+    backgroundColor: colors.mapAccentLight,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
   },
-  groupMetaAction: {
-    fontSize: 12,
+  categoryTagText: {
+    fontSize: 11,
+    fontWeight: '600',
     color: colors.mapAccent,
-    fontWeight: '500',
   },
-  groupMetaUnconfirmed: {
+  photoCountText: {
     fontSize: 12,
     color: colors.textTertiary,
   },
-  // 手動追加ボタン
-  manualButton: {
+  // 「候補を確認・変更」ボタン（owner/editor）
+  confirmButton: {
     borderWidth: 1.5,
-    borderColor: colors.border,
-    borderRadius: 12,
-    borderStyle: 'dashed',
-    paddingVertical: 14,
+    borderColor: colors.mapAccent,
+    borderRadius: 10,
+    paddingVertical: 10,
     alignItems: 'center',
   },
-  manualButtonText: {
-    fontSize: 14,
+  confirmButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.mapAccent,
+  },
+  // 「詳細を見る」ボタン（viewer / 確認済み）
+  viewButton: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  viewButtonText: {
+    fontSize: 13,
     fontWeight: '500',
     color: colors.textSecondary,
   },

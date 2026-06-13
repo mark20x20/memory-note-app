@@ -1,4 +1,5 @@
 // Phase 12.5E: 手動場所入力画面
+// Phase 12.5E-2: 遷移元は必ず places/[placeGroupId] からのみ（placeGroupId なし不可）
 // Route: /(app)/notes/[noteId]/places/manual?placeGroupId=xxx
 //
 // 候補に適切な場所がない場合に、ユーザーが任意の場所名とカテゴリを入力する。
