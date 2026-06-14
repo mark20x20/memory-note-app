@@ -50,6 +50,83 @@ Rules:
 - radius should be large and soft
 - never place too many UI controls over the hero image
 
+### Photo Display Pattern A: Multi-Photo Overview
+
+Use when the user should understand the memory as a set.
+
+Best for:
+- home previews
+- create flow review
+- calendar result cards
+- map-linked place previews
+- note detail sections where sequence matters less than overview
+
+Rules:
+- show one dominant image plus supporting images where possible
+- avoid uniform backup-gallery feeling
+- prefer asymmetrical but balanced composition
+- use this pattern when users benefit from comparing moments quickly
+
+Strengths:
+- gives instant overview
+- supports travel grouping and memory clustering
+- feels scrapbook-like
+
+Risks:
+- can feel visually busy if too many photos are same weight
+- individual photos may lose emotional focus
+
+### Photo Display Pattern B: Swipe-First Carousel
+
+Use when the user should emotionally enter one photo at a time.
+
+Best for:
+- memory detail hero gallery
+- full photo viewing
+- immersive review moments
+- share-preparation flows
+
+Rules:
+- make one photo dominant at a time
+- use horizontal swipe with clear page position feedback
+- surrounding metadata should support the current image, not compete with it
+- keep gesture targets simple and calm
+
+Strengths:
+- stronger emotional immersion
+- better for appreciating each photo
+- premium, cinematic feeling
+
+Risks:
+- slower for understanding the whole memory set
+- harder to compare multiple moments quickly
+
+### Pattern Selection Rule
+
+Choose pattern by user intent:
+- if the user wants overview, grouping, or selection -> use Multi-Photo Overview
+- if the user wants immersion, reflection, or detailed viewing -> use Swipe-First Carousel
+
+Recommended product usage:
+- Home: overview
+- Create: overview
+- Calendar: overview
+- Map supporting cards: overview
+- Memory Detail top area: swipe-first or hybrid
+- Full photo view: swipe-first
+
+### Hybrid Pattern
+
+In some important screens, both patterns should coexist.
+
+Recommended hybrid:
+- top: one large swipeable hero photo
+- below: small overview strip or grouped thumbnails
+
+Use hybrid when:
+- users need emotional immersion first
+- but still need quick access to the larger set
+
 ### Photo Cluster
 
 Use for:
@@ -132,6 +209,8 @@ Rules:
 - large top image
 - diary and places separated into elegant sections
 - timeline and place information should be clearly secondary to the main photo and memory story
+- detail screen may use either overview or swipe-first photo pattern depending on the variant
+- if both are supported, make one variant the emotional default and the other the quick-browse alternative
 
 ## Bottom Navigation
 

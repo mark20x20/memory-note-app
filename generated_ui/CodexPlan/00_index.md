@@ -82,3 +82,10 @@ Recommended batch flow:
 - global layout rules: completed
 - home screen spec: completed
 - create memory screen spec: completed
+- memory detail screen spec with two photo variants: completed
+
+## Screen Specs Available
+
+- [Home](./screen_specs/01_home_screen.md)
+- [Create Memory](./screen_specs/02_create_memory_screen.md)
+- [Memory Detail](./screen_specs/03_memory_detail_screen.md)

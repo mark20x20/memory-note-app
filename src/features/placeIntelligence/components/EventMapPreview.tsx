@@ -182,13 +182,19 @@ export function EventMapPreview({ noteId, photoLocations = [], height = 180 }: P
         </MapView>
       </View>
 
-      {/* 「地図で見る」リンク */}
-      <TouchableOpacity
-        style={styles.mapLink}
-        onPress={() => router.push(`/(app)/notes/${noteId}/map`)}
-      >
-        <Text style={styles.mapLinkText}>地図で見る</Text>
-      </TouchableOpacity>
+      {/* ルート説明 + 「地図で見る」リンク */}
+      <View style={styles.mapFooter}>
+        {useGroups && polylineCoords.length >= 2 ? (
+          <Text style={styles.routeNote}>訪問順を線で表示</Text>
+        ) : (
+          <View />
+        )}
+        <TouchableOpacity
+          onPress={() => router.push(`/(app)/notes/${noteId}/map`)}
+        >
+          <Text style={styles.mapLinkText}>地図で見る</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -218,8 +224,14 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.mapAccent,
   },
-  mapLink: {
-    alignSelf: 'flex-end',
+  mapFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  routeNote: {
+    fontSize: 11,
+    color: colors.textTertiary,
   },
   mapLinkText: {
     fontSize: 13,

@@ -29,7 +29,8 @@ import { useAuth } from '@/core/auth/AuthContext';
 import { useNoteDetail } from '@/features/memoryNotes/hooks/useNoteDetail';
 import { placeGroupRepository } from '@/core/repositories/placeGroupRepository';
 import { canEdit } from '@/features/memoryNotes/utils/permissions';
-import type { PlaceGroupDoc } from '@/features/map/types';
+import type { PlaceGroupDoc, RouteDisplayMode, PremiumRouteTravelMode } from '@/features/map/types';
+import { getTravelModeLabel, getPremiumRouteDescription } from '@/features/map/utils/routeDisplayUtils';
 
 // ── 定数 ────────────────────────────────────────────────────────────────────
 
@@ -222,6 +223,18 @@ export default function NoteMapScreen() {
 
   const userCanEdit = uid && note ? canEdit(note, uid) : false;
 
+  // ── ルート表示モード ──────────────────────────────────────────────────────
+  // TODO: Replace with real subscription status from RevenueCat / App Store.
+  const isPremiumUser = false;
+  const [routeMode, setRouteMode] = useState<RouteDisplayMode>('straight');
+  const [premiumTravelMode, setPremiumTravelMode] = useState<PremiumRouteTravelMode>('walking');
+
+  /** プレミアムモードを選択した際の処理 */
+  function selectPremiumMode(mode: PremiumRouteTravelMode) {
+    setPremiumTravelMode(mode);
+    setRouteMode('premium');
+  }
+
   useEffect(() => {
     if (!noteId) return;
     setGroupsLoading(true);
@@ -326,6 +339,84 @@ export default function NoteMapScreen() {
         contentContainerStyle={styles.bottomSheetContent}
         showsVerticalScrollIndicator={false}
       >
+        {/* ── ルート表示モード ── */}
+        <View style={styles.routeSection}>
+          <Text style={styles.sectionLabel}>ルート表示</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.routeModeRow}
+          >
+            {/* 直線ルート（無料） */}
+            <TouchableOpacity
+              style={[styles.routeChip, routeMode === 'straight' && styles.routeChipActive]}
+              onPress={() => setRouteMode('straight')}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[
+                  styles.routeChipText,
+                  routeMode === 'straight' && styles.routeChipTextActive,
+                ]}
+              >
+                直線
+              </Text>
+            </TouchableOpacity>
+
+            {/* プレミアムモード（徒歩・車・公共交通） */}
+            {(['walking', 'driving', 'transit'] as PremiumRouteTravelMode[]).map((mode) => {
+              const isSelected = routeMode === 'premium' && premiumTravelMode === mode;
+              return (
+                <TouchableOpacity
+                  key={mode}
+                  style={[styles.routeChip, styles.routeChipPremium, isSelected && styles.routeChipActive]}
+                  onPress={() => selectPremiumMode(mode)}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    style={[
+                      styles.routeChipText,
+                      styles.routeChipTextPremium,
+                      isSelected && styles.routeChipTextActive,
+                    ]}
+                  >
+                    {getTravelModeLabel(mode)}
+                  </Text>
+                  <Text style={[styles.routeChipBadge, isSelected && styles.routeChipBadgeActive]}>
+                    Premium
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
+          {/* 直線ルート説明 */}
+          {routeMode === 'straight' ? (
+            <Text style={styles.routeNote}>
+              訪問順を線で表示しています。実際の移動ルートとは異なる場合があります。
+            </Text>
+          ) : null}
+
+          {/* Premium案内カード */}
+          {routeMode === 'premium' && !isPremiumUser ? (
+            <View style={styles.premiumCard}>
+              <Text style={styles.premiumCardTitle}>実ルート表示はプレミアム機能です</Text>
+              <Text style={styles.premiumCardDesc}>
+                {getTravelModeLabel(premiumTravelMode)}での{getPremiumRouteDescription(premiumTravelMode)}
+                {'\n'}
+                移動時間・距離・乗換情報まで記録できるようになります。
+              </Text>
+              <TouchableOpacity
+                style={styles.premiumCardBtn}
+                onPress={() => setRouteMode('straight')}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.premiumCardBtnText}>今は直線ルートで表示</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
+        </View>
+
         {/* ── 場所カード（横スクロール） ── */}
         <View style={styles.cardsSection}>
           <Text style={styles.sectionLabel}>訪れた場所を地図で確認</Text>
@@ -492,6 +583,104 @@ const styles = StyleSheet.create({
   },
   bottomSheetContent: {
     paddingTop: 4,
+  },
+
+  // Route mode section
+  routeSection: {
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    paddingBottom: 4,
+  },
+  routeModeRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingBottom: 2,
+  },
+  routeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.surface,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+  },
+  routeChipActive: {
+    backgroundColor: colors.mapAccent,
+    borderColor: colors.mapAccent,
+  },
+  routeChipPremium: {
+    borderStyle: 'dashed',
+    borderColor: colors.textTertiary,
+  },
+  routeChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  routeChipTextActive: {
+    color: colors.white,
+  },
+  routeChipTextPremium: {
+    color: colors.textTertiary,
+  },
+  routeChipBadge: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: colors.textTertiary,
+    letterSpacing: 0.3,
+    backgroundColor: colors.surfaceIvory,
+    borderRadius: 4,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+  },
+  routeChipBadgeActive: {
+    color: colors.white,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+  },
+  routeNote: {
+    fontSize: 11,
+    color: colors.textTertiary,
+    marginTop: 8,
+    lineHeight: 16,
+  },
+
+  // Premium notice card
+  premiumCard: {
+    marginTop: 10,
+    backgroundColor: colors.surfaceIvory,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 14,
+    gap: 6,
+  },
+  premiumCardTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  premiumCardDesc: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    lineHeight: 18,
+  },
+  premiumCardBtn: {
+    alignSelf: 'flex-start',
+    marginTop: 4,
+    backgroundColor: colors.surface,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  premiumCardBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
   },
 
   // Section

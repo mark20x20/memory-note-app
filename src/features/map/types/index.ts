@@ -143,6 +143,57 @@ export type PlaceGroupDoc = {
   updatedAt: Timestamp | null;
 };
 
+// ── Phase 12.5H-1: Route Plan Mode — 型定義 ─────────────────────────────────
+
+/**
+ * ルート表示モード。
+ * - 'straight': 訪問順を直線の破線でつなぐ（無料プラン）
+ * - 'premium': 実際の移動ルートを表示（有料プラン・将来実装）
+ */
+export type RouteDisplayMode = 'straight' | 'premium';
+
+/**
+ * プレミアムルートの移動手段。
+ * 将来 Google Routes API 呼び出し時に使用する。
+ */
+export type PremiumRouteTravelMode = 'walking' | 'driving' | 'transit';
+
+/**
+ * ルートプランの利用可能状態。
+ * - 'free': 無料プラン（直線ルートのみ）
+ * - 'premium_locked': プレミアム機能だがロック中
+ * - 'premium_available': プレミアム機能が使用可能
+ * - 'not_generated': プレミアムルートはまだ生成されていない
+ */
+export type RoutePlanAvailability = 'free' | 'premium_locked' | 'premium_available' | 'not_generated';
+
+/**
+ * 訪問イベント間のルートセグメント（将来のデータモデル）。
+ * Phase 12.5H-1 では Firestore に保存しない。
+ * Google Routes API でルートを生成した際のキャッシュ用型として定義しておく。
+ *
+ * @future
+ * - Cloud Functions 側でルートを生成し Firestore にキャッシュする
+ * - サブコレクション: memory_notes/{noteId}/route_segments/{segmentId}
+ */
+export type VisitRouteSegment = {
+  id: string;
+  fromPlaceGroupId: string;
+  toPlaceGroupId: string;
+  displayMode: RouteDisplayMode;
+  travelMode?: PremiumRouteTravelMode;
+  /** 直線距離または実ルート距離（メートル） */
+  distanceMeters?: number;
+  /** 移動時間（秒） */
+  durationSeconds?: number;
+  /** Google Routes API の encoded polyline（将来使用） */
+  encodedPolyline?: string;
+  /** ルートプロバイダ */
+  provider?: 'google_routes' | 'manual' | 'straight';
+  /** ルート生成日時 */
+  generatedAt?: unknown; // Firestore Timestamp（将来使用）
+};
+
 /**
  * Firestore: memory_notes/{noteId}/place_groups/{placeGroupId}/candidates/{candidateId}
  * 外部 API から取得した場所候補。API レスポンス全文は保存しない。
