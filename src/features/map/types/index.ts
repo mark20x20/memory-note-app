@@ -194,6 +194,34 @@ export type VisitRouteSegment = {
   generatedAt?: unknown; // Firestore Timestamp（将来使用）
 };
 
+// ── Phase 12.5H-5: Route Segments — クライアント型定義 ───────────────────────
+
+/**
+ * Firestore の route_segments ドキュメントのサマリー型（クライアント用）。
+ * Cloud Functions の getNoteRouteSegments が返す型と対応する。
+ */
+export type RouteSegmentSummary = {
+  id: string;
+  fromPlaceGroupId: string;
+  toPlaceGroupId: string;
+  travelMode?: PremiumRouteTravelMode;
+  distanceMeters?: number;
+  durationSeconds?: number;
+  decodedPolyline?: { latitude: number; longitude: number }[];
+  routeSummary?: string;
+  warnings?: string[];
+  status: 'generated' | 'failed' | 'stale';
+};
+
+/**
+ * ルート生成の状態（map.tsx で使用）。
+ * - 'idle': 未生成
+ * - 'loading': 生成中
+ * - 'success': 生成済み
+ * - 'error': 生成失敗
+ */
+export type RouteGenerationStatus = 'idle' | 'loading' | 'success' | 'error';
+
 /**
  * Firestore: memory_notes/{noteId}/place_groups/{placeGroupId}/candidates/{candidateId}
  * 外部 API から取得した場所候補。API レスポンス全文は保存しない。

@@ -6,31 +6,31 @@
 
 ## Purpose
 
-The Memory Edit screen is where users refine the generated note with control and confidence.
+The Memory Edit screen is a structured refinement space reached from preview.
 
 This screen should make users feel:
-- they can fix small mismatches quickly
-- photos, title, flow, and place edits are all understandable
-- editing is structured and not overwhelming
+- editing is available when needed, not forced too early
+- they can focus on one kind of change at a time
+- the screen is clearer than a single long deep-edit page
 - the memory still feels warm while being editable
 
-## Relation To Phase 12.5G-4
+## Relation To Preview V2
 
-This screen represents the separated edit surface after preview.
+This screen exists so that preview can remain emotionally pure.
 
 It should therefore:
-- expose editable fields clearly
-- support place correction and flow adjustment
-- remain distinct from the calmer preview screen
+- gather all refinement actions here
+- reduce overload by dividing deep settings into tabs
+- keep a quick route back to preview
 
 ## UX Role
 
 This screen supports:
 - correcting title and cover
 - adjusting photo order or selection
-- editing diary text
+- refining the story flow
 - confirming or replacing place labels
-- refining the memory before save
+- editing the memory note text
 
 ## Primary Design Principle
 
@@ -39,19 +39,19 @@ Edit is structured craftsmanship.
 Unlike preview, this screen may show more controls, but it must still feel:
 - guided
 - calm
+- organized by concern
 - photo-first
 
 ## Information Priority
 
-1. editable title and cover
-2. flow blocks and photo groups
-3. place labels and route context
-4. diary text editing
-5. save status and primary actions
+1. current active edit tab
+2. editable content inside that tab
+3. save state and primary actions
+4. quick route back to preview
 
 ## Layout Structure
 
-This screen may be tall and vertically scrollable.
+This screen should use a tabbed edit shell.
 
 Recommended order:
 
@@ -60,131 +60,112 @@ Recommended order:
 Contents:
 - back action
 - page title such as `編集`
-- save status like `未保存の変更`
-- top-right action: `保存`
+- current tab label
+- save status such as `未保存の変更`
+- top-right save action
 
 Typography:
 - title: `22` to `24`
 - status: `12`
 
-### Section 1: Cover And Title Editor
+### Section 1: Edit Tabs
 
-Contents:
-- large cover image
-- small `カバーを変更` button
-- title text field
-- date field row
-- area summary row
+Use a segmented horizontal tab bar.
 
-Rules:
-- cover remains visual and generous
-- input fields are rounded and lightly bordered
-- avoid dense form styling
-
-Sizes:
-- cover height: `240` to `320`
-- title field text: `22`
-- meta field text: `14`
-
-### Section 2: Quick Edit Chips
-
-This area helps users jump to common edits.
-
-Chips:
-- `タイトル`
+Tabs:
+- `概要`
 - `写真`
+- `流れ`
 - `場所`
-- `時間の流れ`
 - `メモ`
 
 Rules:
-- horizontally scrollable
-- active chip highlighted in coral
-- useful as a sticky shortcut when the page is long
+- active tab is clearly highlighted
+- inactive tabs stay light and compact
+- keep the tab bar sticky if the page is long
 
-### Section 3: Flow Edit Blocks
+### Section 2: Active Tab Content
 
-This is the main body.
+Only one deep edit area should be visually expanded at a time.
 
-Each editable flow block includes:
-- flow label and reorder handle
-- time range row
-- place label row
-- photo strip or mini collage
-- summary line
-- edit actions
+#### Tab A: Overview
 
-Editable actions inside each flow:
-- `写真を追加`
-- `写真の順番`
-- `この流れを分ける`
-- `この流れを結合`
-- `場所を修正`
+Purpose:
+- quick overall polish
 
-Recommended structure:
-- one strong card per flow
-- card header for metadata
-- middle for photos
-- bottom for small actions
+Contents:
+- large cover image
+- `カバーを変更`
+- title field
+- date row
+- summary location row
 
-### Section 4: Photo Arrangement Area
+Rules:
+- should feel like the lightest edit tab
+- good default landing tab
 
-This may appear inline or as an expanded card.
+#### Tab B: Photos
+
+Purpose:
+- manage visual selection and order
 
 Contents:
 - draggable thumbnail strip
+- add photo action
 - remove photo action
 - set cover action
-- swipe viewer launch
+- viewer launch
 
 Rules:
-- thumbnails should be large enough to compare visually
-- reordering affordance should be obvious
-- keep destructive actions secondary
+- visual and tactile
+- destructive actions remain secondary
 
-### Section 5: Place Edit Card
+#### Tab C: Flows
 
-This is especially important for the current product flow.
+Purpose:
+- refine the structure of the day
+
+Contents:
+- flow cards
+- reorder handle
+- split flow action
+- merge flow action
+- move photos between flows
+
+Rules:
+- this is the structural editing tab
+- it may be denser than other tabs
+
+#### Tab D: Places
+
+Purpose:
+- correct location information
 
 Contents:
 - current chosen place
-- confidence state
-- nearby candidates list
-- manual correction entry
-- `地図で確認` action
-
-Recommended UI:
-- chosen place displayed first in a prominent soft card
-- candidate list below in stacked selectable rows
-- manual input separated visually as a fallback area
-
-### Section 6: Diary / Memo Editor
-
-Contents:
-- section title
-- multiline text editor
-- regenerate hint if AI exists
-- character count only if needed
-
-Style:
-- soft notebook-like area
-- large line-height
-- editing should feel like writing, not data entry
-
-### Section 7: Change Summary Card
-
-This helps the user feel oriented before saving.
-
-Example rows:
-- `タイトルを変更`
-- `Flow 2 の場所を修正`
-- `写真を3枚追加`
+- nearby candidate list
+- `地図で確認`
+- manual correction input
 
 Rules:
-- secondary visual weight
-- useful near the bottom before save
+- place editing should be centralized here
+- avoid spreading location controls across the whole edit screen
 
-### Section 8: Bottom Save Area
+#### Tab E: Memo
+
+Purpose:
+- refine the written memory itself
+
+Contents:
+- multiline memory note editor
+- optional rewrite / regenerate action
+- writing-focused layout
+
+Rules:
+- notebook-like feel
+- minimal chrome
+
+### Section 3: Bottom Save Area
 
 Primary action:
 - `変更を保存`
@@ -192,7 +173,7 @@ Primary action:
 Secondary action:
 - `プレビューを見る`
 
-Danger zone text action:
+Danger text action:
 - `この編集を破棄`
 
 Rules:
@@ -202,22 +183,21 @@ Rules:
 
 ## Editing Modes
 
-### Mode A: Light Edit
+### Mode A: Quick Edit
 
 For users making only small fixes.
 
 Show:
-- short edit page with a few sections expanded
-- place edit and title edit prominent
+- default to `概要` tab
+- keep deep actions hidden until the user enters another tab
 
 ### Mode B: Deep Edit
 
 For users reorganizing the story.
 
 Show:
-- flow cards with reorder and split tools
-- photo arrangement controls
-- more visible action rows
+- user opens `写真`, `流れ`, `場所`, or `メモ`
+- only the selected domain becomes detailed
 
 ## Interaction States
 
@@ -227,21 +207,20 @@ No changes yet.
 
 Show:
 - save button inactive or subdued
-- `プレビューに戻る` easy to access
+- `プレビューを見る` easy to access
 
 ### State B: Unsaved Changes
 
 Show:
 - top status label
 - active save CTA
-- navigation away warning pattern if needed
+- navigation-away warning if needed
 
 ### State C: Place Needs Attention
 
 Show:
-- amber highlight around place card
-- candidate suggestions
-- direct route to manual correction
+- `場所` tab can carry a subtle attention badge
+- candidate suggestions appear inside that tab
 
 ### State D: Save Complete
 
@@ -253,23 +232,20 @@ Show:
 ## Components
 
 - edit header with save state
-- cover editor
-- title input
-- quick edit chips
-- flow edit cards
-- photo reorder strip
-- place confirmation card
-- place candidate list
-- memo text editor
-- change summary card
+- tab bar
+- overview editor
+- photo management panel
+- flow editing panel
+- place correction panel
+- memo editor
 - bottom save bar
 
 ## Font Sizes
 
 - page title: `24`
-- title input: `22`
+- tab label: `13` to `14`
 - section title: `20`
-- flow card title: `17` to `18`
+- field label: `12`
 - body: `14`
 - caption: `12`
 - status text: `11` to `12`
@@ -280,24 +256,25 @@ Show:
 - section gap: `24`
 - card inner padding: `16`
 - field gap: `12`
-- chip gap: `8`
+- tab gap: `8`
 - bottom CTA top gap: `24`
 
 ## Visual Notes
 
-- keep edit mode slightly cleaner and more structured than preview
+- keep edit mode cleaner and more structured than preview
 - use borders a little more, but stay soft
 - photos must still anchor the page emotionally
 - do not let editable controls make the screen feel admin-like
+- show depth progressively through tabs instead of all at once
 
 ## Preview Pairing Rule
 
 Because preview and edit are intentionally separated:
-- preview should emphasize reassurance
+- preview should emphasize memory immersion
 - edit should emphasize clarity
 
 The visual bridge between them should be:
 - same cover image treatment
 - same color system
 - same flow card family
-- same photo language with more controls added in edit
+- same photo language with more controls added inside each tab

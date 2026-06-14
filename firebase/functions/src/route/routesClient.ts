@@ -1,7 +1,4 @@
-// Phase 12.5H-3: Google Routes API HTTP クライアント skeleton
-//
-// Phase 12.5H-5 で実際の API 呼び出しを実装する。
-// 現時点では型・インターフェースを定義するのみ。
+// Phase 12.5H-5: Google Routes API HTTP クライアント 本実装
 //
 // セキュリティ方針:
 // - GOOGLE_ROUTES_API_KEY は Secret Manager 経由でのみ使用する
@@ -17,10 +14,9 @@ const ROUTES_API_ENDPOINT =
 
 // ── travelMode マッピング ─────────────────────────────────────────────────────
 
-const TRAVEL_MODE_MAP: Record<PremiumRouteTravelMode, string> = {
+const TRAVEL_MODE_MAP: Record<Exclude<PremiumRouteTravelMode, 'transit'>, string> = {
   walking: 'WALK',
   driving: 'DRIVE',
-  transit: 'TRANSIT',
 };
 
 // ── 型定義 ────────────────────────────────────────────────────────────────────
@@ -40,47 +36,132 @@ export type ComputeRouteSegmentResult = {
   warnings?: string[];
 };
 
-// ── Google Routes API リクエスト body 型（将来の実装参照用）──────────────────
+// ── ヘルパー ──────────────────────────────────────────────────────────────────
 
-type RoutesApiRequestBody = {
-  origin: {
-    location: {
-      latLng: { latitude: number; longitude: number };
-    };
-  };
-  destination: {
-    location: {
-      latLng: { latitude: number; longitude: number };
-    };
-  };
-  travelMode: string;
-  computeAlternativeRoutes: boolean;
-  routeModifiers: Record<string, unknown>;
-  polylineQuality: string;
-};
+/**
+ * Google Routes API の duration フィールド（"123s" 形式）を秒数に変換する。
+ * 形式が不正な場合は undefined を返す。
+ */
+function parseDurationSeconds(duration: unknown): number | undefined {
+  if (typeof duration !== 'string') return undefined;
+  const match = duration.match(/^(\d+)s$/);
+  if (!match) return undefined;
+  return parseInt(match[1], 10);
+}
 
 // ── computeRouteSegment ───────────────────────────────────────────────────────
 
 /**
  * Google Routes API (v2:computeRoutes) を呼び出して1区間のルートを取得する。
  *
- * Phase 12.5H-3: skeleton only — 実装は Phase 12.5H-5 で行う。
+ * Phase 12.5H-5: walking / driving の本実装。
+ * transit は未対応（Phase 12.5H-6 で実装予定）。
  *
  * @param params - APIキー、origin/destination 座標、移動手段
  * @returns encodedPolyline、距離、所要時間などのルート情報
- * @throws 未実装エラー（Phase 12.5H-5 で実装予定）
+ * @throws transit が指定された場合は Error
+ * @throws API キーが空の場合は Error
+ * @throws Routes API がエラーを返した場合は Error
+ * @throws encodedPolyline が取得できなかった場合は Error
  */
 export async function computeRouteSegment(
   params: ComputeRouteSegmentParams
 ): Promise<ComputeRouteSegmentResult> {
-  // Phase 12.5H-3: skeleton only.
-  // Phase 12.5H-5 で実際の fetch 呼び出しを実装する。
-  // 参考: ROUTES_API_ENDPOINT, TRAVEL_MODE_MAP, RoutesApiRequestBody を使用する予定。
-  void ROUTES_API_ENDPOINT;
-  void TRAVEL_MODE_MAP;
-  void params;
+  const { apiKey, origin, destination, travelMode } = params;
 
-  throw new Error(
-    '[computeRouteSegment] Not implemented yet. Will be implemented in Phase 12.5H-5.'
-  );
+  // transit は未実装
+  if (travelMode === 'transit') {
+    throw new Error(
+      '[computeRouteSegment] transit is not implemented yet. Will be implemented in Phase 12.5H-6.'
+    );
+  }
+
+  // API キー検証
+  if (!apiKey || apiKey.trim() === '') {
+    throw new Error('[computeRouteSegment] GOOGLE_ROUTES_API_KEY is empty');
+  }
+
+  const apiTravelMode = TRAVEL_MODE_MAP[travelMode];
+
+  const requestBody = {
+    origin: {
+      location: {
+        latLng: {
+          latitude: origin.latitude,
+          longitude: origin.longitude,
+        },
+      },
+    },
+    destination: {
+      location: {
+        latLng: {
+          latitude: destination.latitude,
+          longitude: destination.longitude,
+        },
+      },
+    },
+    travelMode: apiTravelMode,
+    computeAlternativeRoutes: false,
+    languageCode: 'ja',
+    units: 'METRIC',
+  };
+
+  const response = await fetch(ROUTES_API_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Goog-Api-Key': apiKey,
+      'X-Goog-FieldMask':
+        'routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline,routes.description,routes.warnings',
+    },
+    body: JSON.stringify(requestBody),
+  });
+
+  if (!response.ok) {
+    let errorDetail = '';
+    try {
+      const errJson = (await response.json()) as { error?: { message?: string; status?: string } };
+      errorDetail = errJson?.error?.message ?? '';
+      const errStatus = errJson?.error?.status ?? '';
+      if (errStatus) errorDetail = `${errStatus}: ${errorDetail}`;
+    } catch {
+      errorDetail = await response.text().catch(() => '');
+    }
+    throw new Error(
+      `[computeRouteSegment] Google Routes API error ${response.status}: ${errorDetail}`
+    );
+  }
+
+  const json = (await response.json()) as {
+    routes?: Array<{
+      polyline?: { encodedPolyline?: string };
+      distanceMeters?: number;
+      duration?: string;
+      description?: string;
+      warnings?: string[];
+    }>;
+  };
+
+  const route = json.routes?.[0];
+
+  if (!route) {
+    throw new Error(
+      '[computeRouteSegment] Google Routes API returned no routes'
+    );
+  }
+
+  const encodedPolyline = route.polyline?.encodedPolyline;
+  if (!encodedPolyline) {
+    throw new Error(
+      '[computeRouteSegment] Google Routes API returned empty encodedPolyline'
+    );
+  }
+
+  return {
+    encodedPolyline,
+    distanceMeters: route.distanceMeters,
+    durationSeconds: parseDurationSeconds(route.duration),
+    routeSummary: route.description,
+    warnings: route.warnings ?? [],
+  };
 }

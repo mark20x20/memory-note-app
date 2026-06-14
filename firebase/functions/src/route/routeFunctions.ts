@@ -1,16 +1,12 @@
 // Phase 12.5H-3: Google Routes API — Callable Functions skeleton
 // Phase 12.5H-4: route_segments Firestore read/delete 本実装
+// Phase 12.5H-5: generateNoteRoutes walking/driving 本実装
 //
 // セキュリティ方針:
 // - GOOGLE_ROUTES_API_KEY は Secret Manager の defineSecret() 経由でのみ参照する
 // - Google Routes API 呼び出しはこのファイル（Cloud Functions）からのみ行う
 // - 座標・ルート情報はログに出力しない
 // - uid はログに末尾4文字のみ出力する
-//
-// Phase 12.5H-4 実装状態:
-//   - generateNoteRoutes: auth/validation/権限確認まで実装、API 本呼び出し未実装
-//   - getNoteRouteSegments: Firestore read 本実装
-//   - deleteNoteRouteCache: Firestore batch delete 本実装
 
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { defineSecret } from 'firebase-functions/params';
@@ -26,8 +22,16 @@ import type {
   DeleteNoteRouteCacheResult,
   PremiumRouteTravelMode,
   RouteSegmentDoc,
+  RouteSegmentStatus,
 } from './types';
-import { getRouteSegmentsCollectionPath } from './routeCache';
+import {
+  getRouteSegmentsCollectionPath,
+  buildRouteSegmentId,
+  calcRouteExpiresAt,
+  isRouteSegmentStale,
+} from './routeCache';
+import { computeRouteSegment } from './routesClient';
+import { decodePolyline } from './polylineUtils';
 
 // ── 定数 ──────────────────────────────────────────────────────────────────────
 
@@ -96,30 +100,41 @@ async function assertNoteMember(
   }
 }
 
+// ── PlaceGroup 型（Firestore ドキュメントから取得） ────────────────────────────
+
+type PlaceGroupData = {
+  id: string;
+  latitude: number;
+  longitude: number;
+  sortOrder?: number;
+  startAt?: admin.firestore.Timestamp | null;
+  label?: string;
+};
+
 // ── 1. generateNoteRoutes ─────────────────────────────────────────────────────
 
 /**
  * ノートの PlaceGroup 間のルートを Google Routes API で生成し、
  * Firestore の route_segments サブコレクションにキャッシュする。
  *
- * Phase 12.5H-3/H-4: skeleton のみ。
- * - auth チェック・バリデーション・権限確認までは実装済み
- * - Premium 判定・Routes API 本呼び出し・Firestore 保存は未実装
- * - 0件の skeleton 結果を返す
- *
- * Phase 12.5H-5 で以下を実装する:
+ * Phase 12.5H-5: walking / driving 本実装。
  * - PlaceGroup を sortOrder 昇順で取得
- * - 隣接 PlaceGroup ペアでセグメント一覧を構築
+ * - 隣接 PlaceGroup ペアでセグメントを生成
  * - キャッシュ確認（isRouteSegmentStale）
  * - computeRouteSegment で Google Routes API 呼び出し
- * - RouteSegmentDoc を Firestore に保存（expiresAt = 30日後）
+ * - decodedPolyline を Firestore に保存（expiresAt = 30日後）
+ * - transit は未対応（Phase 12.5H-6 で実装予定）
+ *
+ * Premium判定:
+ * - TODO Phase 12.5H-7: isPremiumUser = true のハードコードを RevenueCat 本実装に差し替える。
+ *   本番リリース前に必ず置き換えること。
  */
 export const generateNoteRoutes = onCall(
   {
     region: REGION,
     secrets: [googleRoutesApiKey],
     memory: '256MiB',
-    timeoutSeconds: 60,
+    timeoutSeconds: 120,
   },
   async (request): Promise<GenerateNoteRoutesResult> => {
     // 1. 認証チェック
@@ -142,62 +157,201 @@ export const generateNoteRoutes = onCall(
     const travelMode = data.travelMode as PremiumRouteTravelMode;
     const forceRefresh = data.forceRefresh === true;
 
+    // transit は未実装
+    if (travelMode === 'transit') {
+      throw new HttpsError(
+        'unimplemented',
+        '公共交通ルートは次のフェーズで対応予定です（Phase 12.5H-6）'
+      );
+    }
+
     const db = admin.firestore();
 
     // 3. ノート取得 + owner/editor 権限確認
     await assertOwnerOrEditor(db, noteId, uid);
 
-    // 4. TODO Phase 12.5H-5: Premium 判定を本実装に差し替える。
-    //    現在は isPremiumUser = false のハードコードのため、
-    //    このフェーズでは skeleton として続行する（実生成はしない）。
-    //
-    //    将来の実装例:
-    //    const isPremiumUser = await checkPremiumStatus(uid);
-    //    if (!isPremiumUser) {
-    //      throw new HttpsError('permission-denied', 'ルート生成はプレミアムプランのみ利用可能です');
-    //    }
+    // 4. Premium 判定（仮実装）
+    // TODO Phase 12.5H-7: この isPremiumUser = true のハードコードを
+    //   RevenueCat または Firestore entitlement による本実装に差し替えること。
+    //   本番リリース前に必ず置き換えること。
+    const isPremiumUser = true;
+    if (!isPremiumUser) {
+      throw new HttpsError('permission-denied', 'ルート生成はプレミアムプランのみ利用可能です');
+    }
 
-    // 5. TODO Phase 12.5H-5: ルート生成回数クォータチェックを実装する。
+    // 5. TODO Phase 12.5H-7: ルート生成回数クォータチェックを実装する。
     //    1日 10回 / forceRefresh は 1日 3回の上限を設ける。
     //    await assertRouteGenerationQuota(db, uid, forceRefresh);
 
-    // 6. TODO Phase 12.5H-5: 以下を実装する。
-    //    a. PlaceGroup を sortOrder 昇順で取得
-    //       const groupsSnap = await db
-    //         .collection(`memory_notes/${noteId}/place_groups`)
-    //         .orderBy('sortOrder', 'asc')
-    //         .get();
-    //    b. 有効座標を持つグループのみ抽出
-    //       const groups = groupsSnap.docs
-    //         .map(d => ({ id: d.id, ...d.data() }))
-    //         .filter(g => g.latitude && g.longitude && g.latitude !== 0 && g.longitude !== 0);
-    //    c. 隣接ペアのセグメント一覧を構築
-    //       const segments = [];
-    //       for (let i = 0; i < groups.length - 1; i++) {
-    //         segments.push({ from: groups[i], to: groups[i + 1] });
-    //       }
-    //    d. 各セグメントについて:
-    //       - buildRouteSegmentId で segmentId を生成
-    //       - forceRefresh=false なら Firestore キャッシュ確認（isRouteSegmentStale）
-    //       - キャッシュなし → computeRouteSegment で Google Routes API 呼び出し
-    //       - デコード: decodePolyline(encodedPolyline)
-    //       - Firestore に RouteSegmentDoc として set（expiresAt = calcRouteExpiresAt(new Date(), 30)）
-    //    e. 生成回数カウンタ更新
-    //       await incrementRouteGenerationUsage(db, uid);
+    // 6. PlaceGroup を sortOrder 昇順で取得
+    let groupsQuery: admin.firestore.Query = db
+      .collection(`memory_notes/${noteId}/place_groups`)
+      .orderBy('sortOrder', 'asc');
 
-    // Phase 12.5H-4 skeleton: Routes API 本呼び出しは未実装。
-    // 0件の結果を返す。
+    const groupsSnap = await groupsQuery.get();
+    const groups: PlaceGroupData[] = groupsSnap.docs
+      .map((d) => {
+        const gd = d.data() as Partial<PlaceGroupData>;
+        return {
+          id: d.id,
+          latitude: gd.latitude ?? 0,
+          longitude: gd.longitude ?? 0,
+          sortOrder: gd.sortOrder,
+          startAt: gd.startAt,
+          label: gd.label,
+        };
+      })
+      .filter(
+        (g) =>
+          g.latitude !== 0 &&
+          g.longitude !== 0 &&
+          g.latitude != null &&
+          g.longitude != null
+      );
+
+    if (groups.length < 2) {
+      console.log(
+        `[generateNoteRoutes] noteId=${noteId.slice(0, 8)} uid=***${uid.slice(-4)} travelMode=${travelMode} groups=${groups.length} — not enough groups`
+      );
+      return {
+        noteId,
+        travelMode,
+        segmentCount: 0,
+        cacheHitCount: 0,
+        generatedCount: 0,
+        skippedCount: 0,
+      };
+    }
+
+    // 7. 隣接ペアのセグメント一覧を構築
+    const segmentPairs: Array<{ from: PlaceGroupData; to: PlaceGroupData }> = [];
+    for (let i = 0; i < groups.length - 1; i++) {
+      segmentPairs.push({ from: groups[i], to: groups[i + 1] });
+    }
+
+    // 8. 各セグメントを処理
+    let cacheHitCount = 0;
+    let generatedCount = 0;
+    let skippedCount = 0;
+
+    const apiKey = googleRoutesApiKey.value();
+    const collectionPath = getRouteSegmentsCollectionPath(noteId);
+
+    for (const { from, to } of segmentPairs) {
+      const segmentId = buildRouteSegmentId({
+        fromPlaceGroupId: from.id,
+        toPlaceGroupId: to.id,
+        travelMode,
+      });
+      const segRef = db.doc(`${collectionPath}/${segmentId}`);
+
+      // キャッシュ確認
+      if (!forceRefresh) {
+        const existing = await segRef.get();
+        if (existing.exists) {
+          const existingData = existing.data() as Partial<RouteSegmentDoc>;
+          const placeGroupVersionHash = `${from.id}:${from.latitude},${from.longitude}->${to.id}:${to.latitude},${to.longitude}`;
+          const stale = isRouteSegmentStale({
+            status: existingData.status,
+            expiresAt: existingData.expiresAt ?? null,
+            currentPlaceGroupVersionHash: placeGroupVersionHash,
+            cachedPlaceGroupVersionHash: existingData.placeGroupVersionHash,
+          });
+          if (!stale) {
+            cacheHitCount++;
+            continue;
+          }
+        }
+      }
+
+      // Google Routes API 呼び出し
+      try {
+        const routeResult = await computeRouteSegment({
+          apiKey,
+          origin: { latitude: from.latitude, longitude: from.longitude },
+          destination: { latitude: to.latitude, longitude: to.longitude },
+          travelMode,
+        });
+
+        const decodedPolyline =
+          routeResult.encodedPolyline
+            ? decodePolyline(routeResult.encodedPolyline)
+            : [];
+
+        const placeGroupVersionHash = `${from.id}:${from.latitude},${from.longitude}->${to.id}:${to.latitude},${to.longitude}`;
+        const apiRequestHash = `${travelMode}:${placeGroupVersionHash}`;
+
+        const docData: Omit<RouteSegmentDoc, 'generatedAt' | 'updatedAt'> & {
+          generatedAt: admin.firestore.FieldValue;
+          updatedAt: admin.firestore.FieldValue;
+          expiresAt: admin.firestore.Timestamp;
+        } = {
+          id: segmentId,
+          noteId,
+          fromPlaceGroupId: from.id,
+          toPlaceGroupId: to.id,
+          travelMode,
+          provider: 'google_routes',
+          fromLatitude: from.latitude,
+          fromLongitude: from.longitude,
+          toLatitude: to.latitude,
+          toLongitude: to.longitude,
+          distanceMeters: routeResult.distanceMeters,
+          durationSeconds: routeResult.durationSeconds,
+          encodedPolyline: routeResult.encodedPolyline,
+          decodedPolyline,
+          routeSummary: routeResult.routeSummary,
+          warnings: routeResult.warnings ?? [],
+          status: 'generated' as RouteSegmentStatus,
+          generatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          expiresAt: admin.firestore.Timestamp.fromDate(calcRouteExpiresAt()),
+          apiRequestHash,
+          placeGroupVersionHash,
+        };
+
+        await segRef.set(docData);
+        generatedCount++;
+      } catch (err) {
+        console.error(
+          `[generateNoteRoutes] segment=${segmentId} failed:`,
+          err instanceof Error ? err.message : String(err)
+        );
+
+        // 失敗してもセグメントレコードを残す（次回 stale として再生成を試みる）
+        await segRef.set(
+          {
+            id: segmentId,
+            noteId,
+            fromPlaceGroupId: from.id,
+            toPlaceGroupId: to.id,
+            travelMode,
+            provider: 'google_routes',
+            fromLatitude: from.latitude,
+            fromLongitude: from.longitude,
+            toLatitude: to.latitude,
+            toLongitude: to.longitude,
+            status: 'failed' as RouteSegmentStatus,
+            generatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+        skippedCount++;
+      }
+    }
+
     console.log(
-      `[generateNoteRoutes] skeleton only — noteId=${noteId.slice(0, 8)} uid=***${uid.slice(-4)} travelMode=${travelMode} forceRefresh=${forceRefresh}`
+      `[generateNoteRoutes] noteId=${noteId.slice(0, 8)} uid=***${uid.slice(-4)} travelMode=${travelMode} segmentCount=${segmentPairs.length} cacheHit=${cacheHitCount} generated=${generatedCount} skipped=${skippedCount}`
     );
 
     return {
       noteId,
       travelMode,
-      segmentCount: 0,
-      cacheHitCount: 0,
-      generatedCount: 0,
-      skippedCount: 0,
+      segmentCount: segmentPairs.length,
+      cacheHitCount,
+      generatedCount,
+      skippedCount,
     };
   }
 );

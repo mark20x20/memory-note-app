@@ -40,6 +40,11 @@ The UI should feel:
   - image layout rules
   - map and calendar composition rules
 
+- `03_preview_edit_flow_v2.md`
+  - preview v2 direction
+  - preview/edit responsibility split
+  - tabbed edit structure
+
 - `screen_specs/`
   - one markdown file per major screen
   - screen purpose
@@ -88,6 +93,7 @@ Recommended batch flow:
 - share card screen spec: completed
 - memory preview screen spec: completed
 - memory edit screen spec: completed
+- preview v2 flow document: completed
 
 ## Screen Specs Available
 
@@ -99,3 +105,4 @@ Recommended batch flow:
 - [Share Card](./screen_specs/06_share_card_screen.md)
 - [Memory Preview](./screen_specs/07_memory_preview_screen.md)
 - [Memory Edit](./screen_specs/08_memory_edit_screen.md)
+- [Preview / Edit V2 Flow](./03_preview_edit_flow_v2.md)

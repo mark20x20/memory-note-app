@@ -1,4 +1,7 @@
 // Phase 12.5F-1: Map screen — 訪れた場所を番号付きピンで地図表示
+// Phase 12.5H-1: Route Plan Mode — ルートモード選択UI
+// Phase 12.5H-5: Walking / Driving 実ルート生成・表示
+//
 // Route: /(app)/notes/[noteId]/map
 //
 // PlaceGroup を地図に表示する。
@@ -9,8 +12,9 @@
 // - 簡易旅順プレビュー
 // - 空状態
 // - owner/editor: 候補確認・変更可 / viewer: 確認済みのみ詳細遷移可
+// - walking / driving ルート生成（Premium仮実装）
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -29,8 +33,25 @@ import { useAuth } from '@/core/auth/AuthContext';
 import { useNoteDetail } from '@/features/memoryNotes/hooks/useNoteDetail';
 import { placeGroupRepository } from '@/core/repositories/placeGroupRepository';
 import { canEdit } from '@/features/memoryNotes/utils/permissions';
-import type { PlaceGroupDoc, RouteDisplayMode, PremiumRouteTravelMode } from '@/features/map/types';
-import { getTravelModeLabel, getPremiumRouteDescription } from '@/features/map/utils/routeDisplayUtils';
+import type {
+  PlaceGroupDoc,
+  RouteDisplayMode,
+  PremiumRouteTravelMode,
+  RouteSegmentSummary,
+  RouteGenerationStatus,
+} from '@/features/map/types';
+import {
+  getTravelModeLabel,
+  getPremiumRouteDescription,
+  formatDuration,
+  formatDistance,
+  getRouteColor,
+} from '@/features/map/utils/routeDisplayUtils';
+import {
+  generateNoteRoutesCallable,
+  getNoteRouteSegmentsCallable,
+} from '@/features/map/api/routeFunctionsClient';
+import type { CallableError } from '@/features/map/api/routeFunctionsClient';
 
 // ── 定数 ────────────────────────────────────────────────────────────────────
 
@@ -224,16 +245,61 @@ export default function NoteMapScreen() {
   const userCanEdit = uid && note ? canEdit(note, uid) : false;
 
   // ── ルート表示モード ──────────────────────────────────────────────────────
-  // TODO: Replace with real subscription status from RevenueCat / App Store.
-  const isPremiumUser = false;
+  // TODO Phase 12.5H-7: Replace isPremiumUser with real RevenueCat / entitlement check.
+  //   This is a development stub only. Must be replaced before production release.
+  const isPremiumUser = true;
   const [routeMode, setRouteMode] = useState<RouteDisplayMode>('straight');
   const [premiumTravelMode, setPremiumTravelMode] = useState<PremiumRouteTravelMode>('walking');
+
+  // ── ルート生成状態 ────────────────────────────────────────────────────────
+  const [routeSegments, setRouteSegments] = useState<RouteSegmentSummary[]>([]);
+  const [routeGenerationStatus, setRouteGenerationStatus] = useState<RouteGenerationStatus>('idle');
+  const [routeGenerationError, setRouteGenerationError] = useState<string | null>(null);
 
   /** プレミアムモードを選択した際の処理 */
   function selectPremiumMode(mode: PremiumRouteTravelMode) {
     setPremiumTravelMode(mode);
     setRouteMode('premium');
+    // モード変更時にセグメントをリセット（別モードのデータを見せない）
+    setRouteSegments([]);
+    setRouteGenerationStatus('idle');
+    setRouteGenerationError(null);
   }
+
+  /** ルートセグメントを Firestore から読み込む */
+  const loadRouteSegments = useCallback(
+    async (nId: string, mode: PremiumRouteTravelMode) => {
+      try {
+        const result = await getNoteRouteSegmentsCallable({ noteId: nId, travelMode: mode });
+        setRouteSegments(result.segments);
+        if (result.segments.length > 0) {
+          setRouteGenerationStatus('success');
+        } else {
+          setRouteGenerationStatus('idle');
+        }
+      } catch (err) {
+        console.error('[map] loadRouteSegments error:', err);
+        // 読み込み失敗は idle のままにして再生成を促す
+        setRouteGenerationStatus('idle');
+      }
+    },
+    []
+  );
+
+  /** ルート生成ボタンを押したときの処理 */
+  const handleGenerateRoutes = useCallback(async () => {
+    if (!noteId) return;
+    setRouteGenerationStatus('loading');
+    setRouteGenerationError(null);
+    try {
+      await generateNoteRoutesCallable({ noteId, travelMode: premiumTravelMode });
+      await loadRouteSegments(noteId, premiumTravelMode);
+    } catch (err) {
+      const callErr = err as CallableError;
+      setRouteGenerationError(callErr.message ?? 'ルートの生成に失敗しました');
+      setRouteGenerationStatus('error');
+    }
+  }, [noteId, premiumTravelMode, loadRouteSegments]);
 
   useEffect(() => {
     if (!noteId) return;
@@ -249,8 +315,39 @@ export default function NoteMapScreen() {
     return () => unsubRef.current?.();
   }, [noteId]);
 
+  // Premium モード切替時に既存セグメントを読み込む
+  useEffect(() => {
+    if (!noteId || routeMode !== 'premium' || !isPremiumUser) return;
+    if (premiumTravelMode === 'transit') return;
+    void loadRouteSegments(noteId, premiumTravelMode);
+  }, [noteId, routeMode, premiumTravelMode, isPremiumUser, loadRouteSegments]);
+
   const groupsWithLocation = getGroupsWithLocation(groups);
   const initialRegion = calcRegionForGroups(groupsWithLocation);
+
+  // 生成済みセグメントから Polyline 座標を収集
+  const generatedPolylines: { coordinates: { latitude: number; longitude: number }[]; color: string }[] =
+    routeMode === 'premium' && isPremiumUser && premiumTravelMode !== 'transit'
+      ? routeSegments
+          .filter((s) => s.status === 'generated' && s.decodedPolyline && s.decodedPolyline.length > 0)
+          .map((s) => ({
+            coordinates: s.decodedPolyline!,
+            color: getRouteColor(premiumTravelMode),
+          }))
+      : [];
+
+  // 失敗区間のフォールバック直線を収集
+  const fallbackPolylines: { from: PlaceGroupDoc; to: PlaceGroupDoc }[] = [];
+  if (routeMode === 'premium' && isPremiumUser && premiumTravelMode !== 'transit' && routeSegments.length > 0) {
+    const failedSegments = routeSegments.filter((s) => s.status === 'failed' || s.status === 'stale');
+    for (const seg of failedSegments) {
+      const fromGroup = groupsWithLocation.find((g) => g.id === seg.fromPlaceGroupId);
+      const toGroup = groupsWithLocation.find((g) => g.id === seg.toPlaceGroupId);
+      if (fromGroup && toGroup) {
+        fallbackPolylines.push({ from: fromGroup, to: toGroup });
+      }
+    }
+  }
 
   if (noteLoading || groupsLoading) {
     return (
@@ -296,6 +393,11 @@ export default function NoteMapScreen() {
     );
   }
 
+  // 実ルートPolylineを表示するか（生成済みセグメントがある場合）
+  const hasGeneratedRoutes = generatedPolylines.length > 0;
+  // 直線Polylineを表示するか
+  const showStraightLine = routeMode === 'straight' || !hasGeneratedRoutes;
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScreenHeader title="地図" onBack={() => router.back()} />
@@ -308,18 +410,42 @@ export default function NoteMapScreen() {
         showsCompass
         showsScale
       >
-        {/* 訪問順ルート線（PlaceGroup が2件以上あるときのみ） */}
-        {groupsWithLocation.length >= 2 ? (
+        {/* 直線Polyline（直線モードまたは実ルート未生成時） */}
+        {groupsWithLocation.length >= 2 && showStraightLine ? (
           <Polyline
             coordinates={groupsWithLocation.map((g) => ({
               latitude: g.latitude,
               longitude: g.longitude,
             }))}
-            strokeColor="#4FA8A1"
+            strokeColor={hasGeneratedRoutes ? '#CCCCCC' : '#4FA8A1'}
             strokeWidth={2.5}
             lineDashPattern={[8, 5]}
           />
         ) : null}
+
+        {/* 実ルートPolyline（生成済みセグメントの decodedPolyline を描画） */}
+        {generatedPolylines.map((pl, idx) => (
+          <Polyline
+            key={`route-${idx}`}
+            coordinates={pl.coordinates}
+            strokeColor={pl.color}
+            strokeWidth={3.5}
+          />
+        ))}
+
+        {/* 失敗区間フォールバック直線 */}
+        {fallbackPolylines.map((fb, idx) => (
+          <Polyline
+            key={`fallback-${idx}`}
+            coordinates={[
+              { latitude: fb.from.latitude, longitude: fb.from.longitude },
+              { latitude: fb.to.latitude, longitude: fb.to.longitude },
+            ]}
+            strokeColor="#AAAAAA"
+            strokeWidth={2}
+            lineDashPattern={[6, 4]}
+          />
+        ))}
 
         {groupsWithLocation.map((group, idx) => (
           <Marker
@@ -382,9 +508,11 @@ export default function NoteMapScreen() {
                   >
                     {getTravelModeLabel(mode)}
                   </Text>
-                  <Text style={[styles.routeChipBadge, isSelected && styles.routeChipBadgeActive]}>
-                    Premium
-                  </Text>
+                  {!isPremiumUser ? (
+                    <Text style={[styles.routeChipBadge, isSelected && styles.routeChipBadgeActive]}>
+                      Premium
+                    </Text>
+                  ) : null}
                 </TouchableOpacity>
               );
             })}
@@ -397,7 +525,7 @@ export default function NoteMapScreen() {
             </Text>
           ) : null}
 
-          {/* Premium案内カード */}
+          {/* 非Premium: Premium案内カード */}
           {routeMode === 'premium' && !isPremiumUser ? (
             <View style={styles.premiumCard}>
               <Text style={styles.premiumCardTitle}>実ルート表示はプレミアム機能です</Text>
@@ -414,6 +542,27 @@ export default function NoteMapScreen() {
                 <Text style={styles.premiumCardBtnText}>今は直線ルートで表示</Text>
               </TouchableOpacity>
             </View>
+          ) : null}
+
+          {/* Transit 案内（Premium + transit選択時） */}
+          {routeMode === 'premium' && isPremiumUser && premiumTravelMode === 'transit' ? (
+            <View style={styles.transitCard}>
+              <Text style={styles.transitCardText}>
+                公共交通ルートは次のフェーズで対応予定です。
+              </Text>
+            </View>
+          ) : null}
+
+          {/* Premium + walking/driving: ルート生成UI */}
+          {routeMode === 'premium' && isPremiumUser && premiumTravelMode !== 'transit' ? (
+            <RouteGenerationPanel
+              travelMode={premiumTravelMode}
+              status={routeGenerationStatus}
+              error={routeGenerationError}
+              segments={routeSegments}
+              groups={groupsWithLocation}
+              onGenerate={handleGenerateRoutes}
+            />
           ) : null}
         </View>
 
@@ -435,7 +584,6 @@ export default function NoteMapScreen() {
                   style={styles.placeCard}
                   onPress={() => {
                     if (!canNavigate) return;
-                    // Phase 12.5G-4: 閲覧→flows, 編集→places
                     router.push(`/(app)/notes/${noteId}/flows/${group.id}`);
                   }}
                   activeOpacity={canNavigate ? 0.7 : 1}
@@ -538,6 +686,226 @@ export default function NoteMapScreen() {
     </SafeAreaView>
   );
 }
+
+// ── RouteGenerationPanel ──────────────────────────────────────────────────────
+
+type RouteGenerationPanelProps = {
+  travelMode: Exclude<PremiumRouteTravelMode, 'transit'>;
+  status: RouteGenerationStatus;
+  error: string | null;
+  segments: RouteSegmentSummary[];
+  groups: PlaceGroupDoc[];
+  onGenerate: () => void;
+};
+
+function RouteGenerationPanel({
+  travelMode,
+  status,
+  error,
+  segments,
+  groups,
+  onGenerate,
+}: RouteGenerationPanelProps) {
+  const modeLabel = getTravelModeLabel(travelMode);
+  const routeColor = getRouteColor(travelMode);
+  const generatedSegments = segments.filter((s) => s.status === 'generated');
+  const failedSegments = segments.filter((s) => s.status === 'failed' || s.status === 'stale');
+
+  // ローディング中
+  if (status === 'loading') {
+    return (
+      <View style={panelStyles.card}>
+        <ActivityIndicator size="small" color={routeColor} />
+        <Text style={panelStyles.loadingText}>ルートを取得中...</Text>
+      </View>
+    );
+  }
+
+  // エラー
+  if (status === 'error' && error) {
+    return (
+      <View style={panelStyles.card}>
+        <Text style={panelStyles.errorText}>ルートの生成に失敗しました</Text>
+        <Text style={panelStyles.errorDetail}>{error}</Text>
+        <TouchableOpacity style={panelStyles.generateBtn} onPress={onGenerate} activeOpacity={0.7}>
+          <Text style={panelStyles.generateBtnText}>再試行</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  // 生成済みセグメントあり
+  if (status === 'success' && generatedSegments.length > 0) {
+    return (
+      <View style={panelStyles.card}>
+        <Text style={[panelStyles.cardTitle, { color: routeColor }]}>
+          {modeLabel}ルート
+        </Text>
+        {/* 区間カード */}
+        {segments.map((seg) => {
+          const fromIdx = groups.findIndex((g) => g.id === seg.fromPlaceGroupId);
+          const toIdx = groups.findIndex((g) => g.id === seg.toPlaceGroupId);
+          const fromLabel = fromIdx >= 0 ? `#${fromIdx + 1} ${groups[fromIdx].label}` : seg.fromPlaceGroupId.slice(0, 6);
+          const toLabel = toIdx >= 0 ? `#${toIdx + 1} ${groups[toIdx].label}` : seg.toPlaceGroupId.slice(0, 6);
+
+          if (seg.status === 'failed' || seg.status === 'stale') {
+            return (
+              <View key={seg.id} style={panelStyles.segmentRow}>
+                <Text style={panelStyles.segmentLabel} numberOfLines={1}>
+                  {fromLabel} → {toLabel}
+                </Text>
+                <Text style={panelStyles.segmentFailed}>——（ルート取得失敗）</Text>
+              </View>
+            );
+          }
+
+          const durationStr =
+            seg.durationSeconds != null ? formatDuration(seg.durationSeconds) : null;
+          const distanceStr =
+            seg.distanceMeters != null ? formatDistance(seg.distanceMeters) : null;
+          const infoStr = [modeLabel, durationStr, distanceStr].filter(Boolean).join(' / ');
+
+          return (
+            <View key={seg.id} style={panelStyles.segmentRow}>
+              <Text style={panelStyles.segmentLabel} numberOfLines={1}>
+                {fromLabel} → {toLabel}
+              </Text>
+              <Text style={[panelStyles.segmentInfo, { color: routeColor }]}>{infoStr}</Text>
+            </View>
+          );
+        })}
+
+        {/* 失敗区間の注記 */}
+        {failedSegments.length > 0 ? (
+          <Text style={panelStyles.failedNote}>
+            ＊ 一部区間で実ルートを取得できませんでした。直線ルートで表示しています。
+          </Text>
+        ) : null}
+
+        {/* 再生成ボタン */}
+        <TouchableOpacity
+          style={[panelStyles.regenBtn]}
+          onPress={onGenerate}
+          activeOpacity={0.7}
+        >
+          <Text style={panelStyles.regenBtnText}>ルートを更新</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  // 未生成（idle）
+  return (
+    <View style={panelStyles.card}>
+      <Text style={panelStyles.cardTitle}>{modeLabel}ルートを生成する</Text>
+      <Text style={panelStyles.cardDesc}>
+        訪問場所間の実際の{modeLabel}ルートを取得して表示します。
+        {'\n'}（初回のみ少し時間がかかります）
+      </Text>
+      <TouchableOpacity
+        style={[panelStyles.generateBtn, { backgroundColor: routeColor }]}
+        onPress={onGenerate}
+        activeOpacity={0.7}
+        disabled={false}
+      >
+        <Text style={panelStyles.generateBtnTextWhite}>ルートを生成</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const panelStyles = StyleSheet.create({
+  card: {
+    marginTop: 10,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 14,
+    gap: 8,
+  },
+  cardTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  cardDesc: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    lineHeight: 18,
+  },
+  generateBtn: {
+    alignSelf: 'flex-start',
+    marginTop: 4,
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  generateBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  generateBtnTextWhite: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.white,
+  },
+  loadingText: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  errorText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.error,
+  },
+  errorDetail: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    lineHeight: 18,
+  },
+  segmentRow: {
+    gap: 2,
+    paddingVertical: 4,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  segmentLabel: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  segmentInfo: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  segmentFailed: {
+    fontSize: 12,
+    color: colors.textTertiary,
+  },
+  failedNote: {
+    fontSize: 11,
+    color: colors.textTertiary,
+    lineHeight: 16,
+    marginTop: 4,
+  },
+  regenBtn: {
+    alignSelf: 'flex-start',
+    marginTop: 4,
+    backgroundColor: colors.surface,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  regenBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+});
 
 // ── スタイル ──────────────────────────────────────────────────────────────────
 
@@ -645,6 +1013,20 @@ const styles = StyleSheet.create({
     color: colors.textTertiary,
     marginTop: 8,
     lineHeight: 16,
+  },
+
+  // Transit card
+  transitCard: {
+    marginTop: 10,
+    backgroundColor: colors.surfaceIvory,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 14,
+  },
+  transitCardText: {
+    fontSize: 13,
+    color: colors.textSecondary,
   },
 
   // Premium notice card
@@ -778,12 +1160,6 @@ const styles = StyleSheet.create({
   timelineSection: {
     paddingHorizontal: 20,
     paddingTop: 20,
-  },
-  timelineNote: {
-    fontSize: 11,
-    color: colors.textTertiary,
-    marginBottom: 12,
-    lineHeight: 16,
   },
   timelineList: {
     backgroundColor: colors.surface,
