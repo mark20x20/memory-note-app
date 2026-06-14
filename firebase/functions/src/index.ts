@@ -453,6 +453,13 @@ export {
   updatePlaceGroupManually,
 } from './place/placeFunctions';
 
+// ── Phase 12.5H-3: Google Routes API Functions ────────────────────────────────
+export {
+  generateNoteRoutes,
+  getNoteRouteSegments,
+  deleteNoteRouteCache,
+} from './route/routeFunctions';
+
 export const removeNoteMember = onCall(
   { region: 'asia-northeast1' },
   async (request) => {

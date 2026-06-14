@@ -1,0 +1,137 @@
+// Phase 12.5H-3: Google Routes API — 型定義
+// firebase-admin の Timestamp を使用（クライアント SDK の firebase/firestore とは別）
+
+import type { Timestamp } from 'firebase-admin/firestore';
+
+// ── 移動手段 ──────────────────────────────────────────────────────────────────
+
+export type PremiumRouteTravelMode = 'walking' | 'driving' | 'transit';
+
+// ── ルートセグメントのステータス ──────────────────────────────────────────────
+
+export type RouteSegmentStatus = 'generated' | 'failed' | 'stale';
+
+// ── Callable 関数の入出力型 ───────────────────────────────────────────────────
+
+export type GenerateNoteRoutesInput = {
+  noteId: string;
+  travelMode: PremiumRouteTravelMode;
+  /** true にするとキャッシュを無視して再生成。Premium でも1日上限あり */
+  forceRefresh?: boolean;
+};
+
+export type GenerateNoteRoutesResult = {
+  noteId: string;
+  travelMode: PremiumRouteTravelMode;
+  /** 処理したセグメント総数 */
+  segmentCount: number;
+  /** キャッシュから返したセグメント数 */
+  cacheHitCount: number;
+  /** 新たに Routes API で生成したセグメント数 */
+  generatedCount: number;
+  /** 座標不明など理由でスキップしたセグメント数 */
+  skippedCount: number;
+};
+
+export type GetNoteRouteSegmentsInput = {
+  noteId: string;
+  travelMode: PremiumRouteTravelMode;
+};
+
+export type RouteSegmentSummary = {
+  id: string;
+  fromPlaceGroupId: string;
+  toPlaceGroupId: string;
+  distanceMeters?: number;
+  durationSeconds?: number;
+  decodedPolyline?: RouteLatLng[];
+  status: RouteSegmentStatus;
+};
+
+export type GetNoteRouteSegmentsResult = {
+  noteId: string;
+  travelMode: PremiumRouteTravelMode;
+  segments: RouteSegmentSummary[];
+};
+
+export type DeleteNoteRouteCacheInput = {
+  noteId: string;
+  travelMode: PremiumRouteTravelMode | 'all';
+};
+
+export type DeleteNoteRouteCacheResult = {
+  deletedCount: number;
+};
+
+// ── Firestore ドキュメント型 ───────────────────────────────────────────────────
+
+export type RouteLatLng = {
+  latitude: number;
+  longitude: number;
+};
+
+export type RouteSegmentDoc = {
+  // ── ドキュメント識別 ────────────────────────────────
+  id: string;                        // = segmentId: {fromPlaceGroupId}_{toPlaceGroupId}_{travelMode}
+  noteId: string;
+
+  // ── 区間の端点 ─────────────────────────────────────
+  fromPlaceGroupId: string;
+  toPlaceGroupId: string;
+
+  // ── 移動手段・プロバイダ ────────────────────────────
+  travelMode: PremiumRouteTravelMode;
+  provider: 'google_routes';
+
+  // ── 端点座標（キャッシュ無効化検出に使う） ────────────
+  fromLatitude: number;
+  fromLongitude: number;
+  toLatitude: number;
+  toLongitude: number;
+
+  // ── ルート情報 ─────────────────────────────────────
+  distanceMeters?: number;           // 区間距離（メートル, 例: 850）
+  durationSeconds?: number;          // 所要時間（秒, 例: 720 = 12分）
+
+  // ── Polyline ───────────────────────────────────────
+  /**
+   * Google Routes API が返す encoded polyline 文字列。
+   * decode して decodedPolyline を生成するが、元データも保持する。
+   */
+  encodedPolyline?: string;
+  /**
+   * encodedPolyline を decode した座標配列。
+   * Firestore からそのまま読んで MapView の Polyline に渡せる形式。
+   * decode は Cloud Functions 側で実施（モバイル側での計算を省略）。
+   */
+  decodedPolyline?: RouteLatLng[];
+
+  // ── 補足情報 ───────────────────────────────────────
+  routeSummary?: string;             // 例: "国道14号" （driving の場合）
+  warnings?: string[];               // Routes API からの警告
+
+  // ── ステータス ─────────────────────────────────────
+  /**
+   * - 'generated': 正常に生成済み
+   * - 'failed': API 呼び出し失敗（フォールバック: 直線ルートを使う）
+   * - 'stale': 座標変更などにより無効化済み（再生成が必要）
+   */
+  status: RouteSegmentStatus;
+
+  // ── タイムスタンプ ─────────────────────────────────
+  generatedAt: Timestamp;
+  updatedAt: Timestamp;
+  /**
+   * この日時を過ぎたらキャッシュを無効とみなす。
+   * 初期 TTL: 30日
+   */
+  expiresAt?: Timestamp;
+
+  // ── バージョン管理（将来用） ───────────────────────
+  /**
+   * PlaceGroup の座標ハッシュ。
+   * 座標変更を検出するために使う（Phase 12.5H-4+ で実装予定）。
+   */
+  apiRequestHash?: string;
+  placeGroupVersionHash?: string;
+};

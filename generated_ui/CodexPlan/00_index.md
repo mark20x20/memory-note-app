@@ -86,6 +86,8 @@ Recommended batch flow:
 - map screen spec: completed
 - calendar screen spec: completed
 - share card screen spec: completed
+- memory preview screen spec: completed
+- memory edit screen spec: completed
 
 ## Screen Specs Available
 
@@ -95,3 +97,5 @@ Recommended batch flow:
 - [Map](./screen_specs/04_map_screen.md)
 - [Calendar](./screen_specs/05_calendar_screen.md)
 - [Share Card](./screen_specs/06_share_card_screen.md)
+- [Memory Preview](./screen_specs/07_memory_preview_screen.md)
+- [Memory Edit](./screen_specs/08_memory_edit_screen.md)
