@@ -150,3 +150,31 @@ If there are no memory notes yet:
 - `02_create_memory_screen.md`
 - `03_memory_detail_screen.md`
 - future calendar and map entry cards should visually inherit from this screen
+
+## Detailed Style Tokens
+
+### Colors
+
+- page background: `#FAF7F2`
+- hero card: `#FFFFFF`
+- primary accent: `#F26B5B`
+- text primary: `#2E2A27`
+- text secondary: `#7A746D`
+- border: `#E8DED4`
+
+### Typography
+
+- screen title: `24 / 30 / 600 / Noto Sans JP`
+- hero title: `24 / 30 / 600 / Noto Sans JP`
+- card title: `18 / 24 / 600 / Noto Sans JP`
+- body: `14 / 22 / 400 / Noto Sans JP`
+- caption: `12 / 18 / 400 / Noto Sans JP`
+
+### Measurements
+
+- page padding: `20`
+- hero radius: `28`
+- hero height: `300`
+- card radius: `20`
+- card padding: `16`
+- create CTA height: `52`

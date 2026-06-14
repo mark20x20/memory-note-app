@@ -223,3 +223,30 @@ Reason:
 - Memory Detail
 - Full Photo View
 - OS Share Sheet
+
+## Detailed Style Tokens
+
+### Colors
+
+- base background: `#FAF7F2`
+- card background: `#FFFFFF`
+- primary accent: `#F26B5B`
+- map accent: `#4FA8A1`
+- text primary: `#2E2A27`
+- text secondary: `#7A746D`
+
+### Typography
+
+- title: `22 / 28 / 600 / Noto Sans JP`
+- date/location: `13 / 20 / 500`
+- diary line: `14 / 22 / 400 / Noto Sans JP`
+- chip text: `12 / 18 / 600`
+
+### Measurements
+
+- square export: `1080 x 1080`
+- portrait export: `1080 x 1350`
+- story export: `1080 x 1920`
+- card radius: `32`
+- hero image radius: `24`
+- chip height: `28`

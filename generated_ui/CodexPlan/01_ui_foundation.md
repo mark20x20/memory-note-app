@@ -85,6 +85,18 @@ Recommended implementation direction:
 - body: regular or medium
 - captions: regular
 
+### Font Recommendation
+
+- Japanese primary: `Noto Sans JP`
+- Numeric / Latin support: `Inter`
+- Runtime fallback: `System`
+
+Recommended implementation naming:
+- heading: `NotoSansJP-SemiBold`
+- label: `NotoSansJP-Medium`
+- body: `NotoSansJP-Regular`
+- numeric meta: `Inter-Medium`
+
 ### Type Scale
 
 - Display / hero title: `28`
@@ -176,3 +188,51 @@ Rules:
 - gray wireframe look
 - overly social-feed-like UI
 - travel booking visual language
+
+## Core Tokens
+
+### Color Tokens
+
+- `background.default`: `#FAF7F2`
+- `background.secondary`: `#FFF9F4`
+- `background.section`: `#F4EEE6`
+- `surface.card`: `#FFFFFF`
+- `surface.ivory`: `#F8F1E8`
+- `accent.primary`: `#F26B5B`
+- `accent.primaryStrong`: `#FF7A6B`
+- `accent.primarySoft`: `#FDE7E2`
+- `accent.map`: `#4FA8A1`
+- `accent.mapSoft`: `#DFF3F1`
+- `text.primary`: `#2E2A27`
+- `text.secondary`: `#7A746D`
+- `text.tertiary`: `#9A928A`
+- `border.default`: `#E8DED4`
+- `border.soft`: `#F0E7DE`
+- `state.success`: `#4CAF50`
+- `state.warning`: `#FF9500`
+- `state.error`: `#FF5A52`
+
+### Typography Tokens
+
+- `display`: `28 / 34 / 600`
+- `screenTitle`: `24 / 30 / 600`
+- `sectionTitle`: `20 / 26 / 600`
+- `cardTitle`: `18 / 24 / 600`
+- `body`: `15 / 24 / 400`
+- `bodySecondary`: `14 / 22 / 400`
+- `caption`: `12 / 18 / 400`
+- `micro`: `11 / 16 / 500`
+
+### Radius Tokens
+
+- `radius.hero`: `28`
+- `radius.cardLarge`: `24`
+- `radius.card`: `20`
+- `radius.smallCard`: `14`
+- `radius.button`: `16`
+- `radius.chip`: `999`
+
+### Shadow Tokens
+
+- `shadow.card`: color `#2E2A27`, opacity `0.06`, y `6`, blur `18`
+- `shadow.hero`: color `#2E2A27`, opacity `0.10`, y `10`, blur `24`

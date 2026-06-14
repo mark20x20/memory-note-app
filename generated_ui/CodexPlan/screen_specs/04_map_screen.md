@@ -251,3 +251,30 @@ This is the best balance between:
 - connects naturally from Note Detail
 - feeds into Place Detail / User Confirmation screens
 - should visually share card language with Home and Calendar
+
+## Detailed Style Tokens
+
+### Colors
+
+- page background: `#FAF7F2`
+- map accent: `#4FA8A1`
+- map accent soft: `#DFF3F1`
+- card background: `#FFFFFF`
+- text primary: `#2E2A27`
+- text secondary: `#7A746D`
+- border: `#E8DED4`
+
+### Typography
+
+- screen title: `24 / 30 / 600 / Noto Sans JP`
+- place title: `16 / 22 / 600 / Noto Sans JP`
+- section title: `20 / 26 / 600 / Noto Sans JP`
+- meta text: `12 / 18 / 500 / Noto Sans JP`
+
+### Measurements
+
+- page padding: `20`
+- map block height: `320`
+- map radius: `24`
+- preview card radius: `20`
+- preview image height: `120`

@@ -274,3 +274,32 @@ This screen should hand off visually and emotionally to:
 - upload / processing states
 
 The photo styling here should match the detail screen so the experience feels continuous.
+
+## Detailed Style Tokens
+
+### Colors
+
+- page background: `#FAF7F2`
+- upload card: `#FFFFFF`
+- helper card: `#F8F1E8`
+- primary button: `#F26B5B`
+- primary text: `#2E2A27`
+- secondary text: `#7A746D`
+- border: `#E8DED4`
+
+### Typography
+
+- page title: `24 / 30 / 600 / Noto Sans JP`
+- hero prompt: `18 / 24 / 600 / Noto Sans JP`
+- section title: `20 / 26 / 600 / Noto Sans JP`
+- body: `14 / 22 / 400 / Noto Sans JP`
+- caption: `12 / 18 / 400 / Noto Sans JP`
+
+### Measurements
+
+- page padding: `20`
+- upload hero radius: `24`
+- upload hero height: `280`
+- CTA height: `52`
+- preview thumbnail size: `72`
+- card padding: `16`

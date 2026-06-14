@@ -238,3 +238,34 @@ The edit button should therefore feel:
 - quiet
 - safe
 - always available when needed
+
+## Detailed Style Tokens
+
+### Colors
+
+- page background: `#FAF7F2`
+- flow card background: `#FFFFFF`
+- memory note card: `#F8F1E8`
+- route accent: `#4FA8A1`
+- text primary: `#2E2A27`
+- text secondary: `#7A746D`
+- border: `#E8DED4`
+
+### Typography
+
+- screen title: `24 / 30 / 600 / Noto Sans JP`
+- memory title: `24 / 30 / 600 / Noto Sans JP`
+- flow title: `18 / 24 / 600 / Noto Sans JP`
+- body: `15 / 24 / 400 / Noto Sans JP`
+- meta text: `13 / 20 / 500 / Noto Sans JP`
+- micro label: `11 / 16 / 500 / Inter`
+
+### Measurements
+
+- page padding: `20`
+- hero radius: `28`
+- hero height: `360`
+- thumbnail size: `68`
+- flow card radius: `20`
+- route preview height: `160`
+- edit CTA height: `52`

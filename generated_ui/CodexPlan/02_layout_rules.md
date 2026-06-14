@@ -225,3 +225,41 @@ Rules:
 - create can be slightly emphasized
 - nav labels should stay short
 - active state should use coral, map-related screens may include subtle teal accents in content, not nav
+
+## Component Measurements
+
+### Header
+
+- standard header height: `56`
+- horizontal padding: `20`
+- right action tap area: `44 x 44`
+
+### Buttons
+
+- primary button height: `52`
+- secondary button height: `52`
+- tertiary text button min height: `40`
+- button horizontal padding: `16` to `20`
+- button radius: `16`
+
+### Cards
+
+- standard card padding: `16`
+- dense card padding: `14`
+- large card padding: `20`
+- card radius: `20`
+- large card radius: `24`
+
+### Images
+
+- home hero height: `300`
+- preview hero height: `360`
+- detail hero height: `380`
+- edit cover height: `280`
+- supporting thumbnail: `64` to `72`
+
+### Bottom Bars
+
+- sticky bottom bar min height: `78`
+- sticky bar horizontal padding: `20`
+- sticky top border: `1px #F0E7DE`

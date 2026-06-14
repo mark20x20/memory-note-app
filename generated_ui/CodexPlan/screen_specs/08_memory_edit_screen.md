@@ -278,3 +278,38 @@ The visual bridge between them should be:
 - same color system
 - same flow card family
 - same photo language with more controls added inside each tab
+
+## Detailed Style Tokens
+
+### Colors
+
+- page background: `#FAF7F2`
+- panel background: `#FFFFFF`
+- active tab background: `#FDE7E2`
+- active tab text: `#F26B5B`
+- support accent: `#4FA8A1`
+- text primary: `#2E2A27`
+- text secondary: `#7A746D`
+- border: `#E8DED4`
+- attention badge: `#FF9500`
+
+### Typography
+
+- screen title: `24 / 30 / 600 / Noto Sans JP`
+- tab label: `13 / 18 / 600 / Noto Sans JP`
+- field value: `15 / 22 / 400 / Noto Sans JP`
+- field label: `12 / 18 / 500 / Noto Sans JP`
+- status text: `11 / 16 / 500 / Inter`
+
+### Measurements
+
+- page padding: `20`
+- tab bar height: `44`
+- tab radius: `999`
+- cover radius: `24`
+- cover height: `280`
+- field height: `52`
+- row field height: `48`
+- thumbnail size: `72`
+- save bar min height: `78`
+- save button height: `52`

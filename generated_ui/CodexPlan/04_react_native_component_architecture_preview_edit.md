@@ -591,3 +591,30 @@ The safest architecture is:
 - reuse existing timeline / map / place flows where already built
 
 This fits the current repository without forcing a large rewrite.
+
+## Component Token Defaults
+
+### `EditTabBar`
+
+- height: `44`
+- tab padding x: `14`
+- active bg: `#FDE7E2`
+- active text: `#F26B5B`
+- inactive text: `#7A746D`
+- label: `13 / 600 / Noto Sans JP`
+
+### `OverviewEditPanel`
+
+- cover height: `280`
+- cover radius: `24`
+- title input height: `52`
+- row field height: `48`
+- field border: `#E8DED4`
+- field radius: `16`
+
+### `EditSaveBar`
+
+- min height: `78`
+- background: `rgba(250,247,242,0.94)`
+- top border: `1px #F0E7DE`
+- primary button height: `52`

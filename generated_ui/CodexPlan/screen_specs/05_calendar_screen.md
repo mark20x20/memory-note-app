@@ -217,3 +217,32 @@ This keeps time browsing clear while ensuring the screen still feels like a memo
 - Memory Detail
 - On This Day
 - Search
+
+## Detailed Style Tokens
+
+### Colors
+
+- page background: `#FAF7F2`
+- calendar surface: `#FFFFFF`
+- selected date accent: `#F26B5B`
+- date marker accent: `#4FA8A1`
+- text primary: `#2E2A27`
+- text secondary: `#7A746D`
+- border: `#E8DED4`
+
+### Typography
+
+- screen title: `24 / 30 / 600 / Noto Sans JP`
+- month title: `20 / 26 / 600 / Noto Sans JP`
+- date numeral: `14 / 20 / 500 / Inter`
+- memory card title: `16 / 22 / 600 / Noto Sans JP`
+- caption: `12 / 18 / 400 / Noto Sans JP`
+
+### Measurements
+
+- page padding: `20`
+- calendar radius: `24`
+- calendar cell height: `40`
+- selected day circle: `32`
+- memory card radius: `20`
+- memory image height: `96`

@@ -45,6 +45,10 @@ The UI should feel:
   - preview/edit responsibility split
   - tabbed edit structure
 
+- `05_additional_screen_backlog.md`
+  - remaining high-value screens
+  - implementation priority after current set
+
 - `screen_specs/`
   - one markdown file per major screen
   - screen purpose
@@ -94,6 +98,12 @@ Recommended batch flow:
 - memory preview screen spec: completed
 - memory edit screen spec: completed
 - preview v2 flow document: completed
+- additional screen backlog: completed
+- full photo viewer screen spec: completed
+- place detail / candidate confirmation spec: completed
+- collaboration / members screen spec: completed
+- flow detail screen spec: completed
+- onboarding screen spec: completed
 
 ## Screen Specs Available
 
@@ -105,4 +115,10 @@ Recommended batch flow:
 - [Share Card](./screen_specs/06_share_card_screen.md)
 - [Memory Preview](./screen_specs/07_memory_preview_screen.md)
 - [Memory Edit](./screen_specs/08_memory_edit_screen.md)
+- [Full Photo Viewer](./screen_specs/09_full_photo_viewer_screen.md)
+- [Place Detail / Candidate Confirmation](./screen_specs/10_place_detail_screen.md)
+- [Collaboration / Members](./screen_specs/11_members_screen.md)
+- [Flow Detail](./screen_specs/12_flow_detail_screen.md)
+- [Onboarding](./screen_specs/13_onboarding_screen.md)
 - [Preview / Edit V2 Flow](./03_preview_edit_flow_v2.md)
+- [Additional Screen Backlog](./05_additional_screen_backlog.md)

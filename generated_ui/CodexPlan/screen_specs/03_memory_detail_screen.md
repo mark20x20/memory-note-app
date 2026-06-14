@@ -277,3 +277,31 @@ A dedicated full photo viewer can extend Variant B with:
 - full-screen swipe
 - zoom
 - date and place overlay
+
+## Detailed Style Tokens
+
+### Colors
+
+- page background: `#FAF7F2`
+- section card: `#FFFFFF`
+- map accent: `#4FA8A1`
+- text primary: `#2E2A27`
+- text secondary: `#7A746D`
+- border: `#E8DED4`
+
+### Typography
+
+- title: `24 / 30 / 600 / Noto Sans JP`
+- section title: `20 / 26 / 600 / Noto Sans JP`
+- diary body: `15 / 24 / 400 / Noto Sans JP`
+- meta text: `13 / 20 / 500 / Noto Sans JP`
+- chip text: `12 / 18 / 500`
+
+### Measurements
+
+- page padding: `20`
+- hero radius: `28`
+- hero height: `380`
+- thumbnail size: `64`
+- section card radius: `20`
+- button height: `48` to `52`

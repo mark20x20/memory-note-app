@@ -158,3 +158,23 @@ Recommended pattern:
   - defines the emotional preview surface
 - `screen_specs/08_memory_edit_screen.md`
   - should follow this tabbed edit model
+
+## Detailed Tokens For This Flow
+
+### Preview CTA
+
+- label: `編集する`
+- height: `52`
+- radius: `16`
+- background: `#FFFFFF`
+- border: `1px #E8DED4`
+- text: `15 / 600 / #2E2A27`
+
+### Edit Tab Bar
+
+- height: `44`
+- active bg: `#FDE7E2`
+- active text: `#F26B5B`
+- inactive text: `#7A746D`
+- tab radius: `999`
+- label size: `13`
