@@ -197,6 +197,17 @@ export type VisitRouteSegment = {
 // ── Phase 12.5H-5: Route Segments — クライアント型定義 ───────────────────────
 
 /**
+ * 区間別移動手段指定（Phase 12.5H-5.5 mixed route mode）。
+ * generateNoteRoutes に segmentTravelModes として渡す。
+ * transit を指定した場合、Cloud Functions 側でスキップされる。
+ */
+export type SegmentTravelModeInput = {
+  fromPlaceGroupId: string;
+  toPlaceGroupId: string;
+  travelMode: PremiumRouteTravelMode;
+};
+
+/**
  * Firestore の route_segments ドキュメントのサマリー型（クライアント用）。
  * Cloud Functions の getNoteRouteSegments が返す型と対応する。
  */

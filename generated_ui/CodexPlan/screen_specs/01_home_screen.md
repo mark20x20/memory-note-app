@@ -16,6 +16,15 @@ The page should answer these questions within the first few seconds:
 - which note should I reopen
 - how do I create a new one
 
+## Primary Design Principle
+
+Home should feel like the emotional front door of the app.
+
+It should prioritize:
+- warmth over density
+- photo recall over utility menus
+- immediate re-entry into memories over abstract navigation
+
 ## Information Priority
 
 1. featured recent memory

@@ -22,6 +22,15 @@ The Map screen should answer:
 - how did the outing or trip flow
 - which memory note or place group should I open next
 
+## Primary Design Principle
+
+Map should feel memory-led, not utility-led.
+
+It should prioritize:
+- place recall
+- photo association
+- route atmosphere
+
 ## Core Experience
 
 The emotional goal is:

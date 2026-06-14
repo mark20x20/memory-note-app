@@ -19,6 +19,15 @@ The Calendar screen should help users:
 - jump from a date to a memory note quickly
 - rediscover recent or older moments in a calm way
 
+## Primary Design Principle
+
+Calendar should make time feel emotional and browsable.
+
+It should prioritize:
+- memory access over schedule logic
+- warmth over admin clarity
+- visual calm over feature density
+
 ## Core Experience
 
 The emotional goal is:

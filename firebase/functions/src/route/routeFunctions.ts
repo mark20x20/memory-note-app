@@ -23,6 +23,7 @@ import type {
   PremiumRouteTravelMode,
   RouteSegmentDoc,
   RouteSegmentStatus,
+  SegmentTravelModeInput,
 } from './types';
 import {
   getRouteSegmentsCollectionPath,
@@ -149,15 +150,35 @@ export const generateNoteRoutes = onCall(
     if (typeof data.noteId !== 'string' || !data.noteId.trim()) {
       throw new HttpsError('invalid-argument', 'noteId が不正です');
     }
-    if (!VALID_TRAVEL_MODES.includes(data.travelMode as PremiumRouteTravelMode)) {
-      throw new HttpsError('invalid-argument', 'travelMode が不正です（walking / driving / transit）');
+
+    const hasGlobalMode =
+      typeof data.travelMode === 'string' &&
+      VALID_TRAVEL_MODES.includes(data.travelMode as PremiumRouteTravelMode);
+    const hasSegmentModes =
+      Array.isArray(data.segmentTravelModes) &&
+      (data.segmentTravelModes as SegmentTravelModeInput[]).length > 0;
+
+    if (!hasGlobalMode && !hasSegmentModes) {
+      throw new HttpsError(
+        'invalid-argument',
+        'travelMode または segmentTravelModes のいずれかが必要です'
+      );
+    }
+    if (data.travelMode !== undefined && !hasGlobalMode) {
+      throw new HttpsError(
+        'invalid-argument',
+        'travelMode が不正です（walking / driving / transit）'
+      );
     }
 
     const noteId = data.noteId.trim();
-    const travelMode = data.travelMode as PremiumRouteTravelMode;
+    const travelMode = hasGlobalMode ? (data.travelMode as PremiumRouteTravelMode) : undefined;
+    const segmentModes: SegmentTravelModeInput[] = hasSegmentModes
+      ? (data.segmentTravelModes as SegmentTravelModeInput[])
+      : [];
     const forceRefresh = data.forceRefresh === true;
 
-    // transit は未実装
+    // 全体モードで transit は未実装
     if (travelMode === 'transit') {
       throw new HttpsError(
         'unimplemented',
@@ -238,10 +259,40 @@ export const generateNoteRoutes = onCall(
     const collectionPath = getRouteSegmentsCollectionPath(noteId);
 
     for (const { from, to } of segmentPairs) {
+      // 区間ごとの移動手段を決定
+      let segTravelMode: PremiumRouteTravelMode;
+      if (travelMode) {
+        // 全体モード
+        segTravelMode = travelMode;
+      } else {
+        // 区間別モード: segmentModes から対応する手段を検索
+        const found = segmentModes.find(
+          (s) => s.fromPlaceGroupId === from.id && s.toPlaceGroupId === to.id
+        );
+        if (!found) {
+          // 手段未指定の区間はスキップ
+          console.log(
+            `[generateNoteRoutes] no segmentTravelMode for ${from.id}->${to.id}, skipping`
+          );
+          skippedCount++;
+          continue;
+        }
+        segTravelMode = found.travelMode;
+      }
+
+      // transit は未実装: スキップ（区間別モードでは throw しない）
+      if (segTravelMode === 'transit') {
+        console.log(
+          `[generateNoteRoutes] transit not implemented for ${from.id}->${to.id}, skipping`
+        );
+        skippedCount++;
+        continue;
+      }
+
       const segmentId = buildRouteSegmentId({
         fromPlaceGroupId: from.id,
         toPlaceGroupId: to.id,
-        travelMode,
+        travelMode: segTravelMode,
       });
       const segRef = db.doc(`${collectionPath}/${segmentId}`);
 
@@ -270,7 +321,7 @@ export const generateNoteRoutes = onCall(
           apiKey,
           origin: { latitude: from.latitude, longitude: from.longitude },
           destination: { latitude: to.latitude, longitude: to.longitude },
-          travelMode,
+          travelMode: segTravelMode,
         });
 
         const decodedPolyline =
@@ -279,7 +330,7 @@ export const generateNoteRoutes = onCall(
             : [];
 
         const placeGroupVersionHash = `${from.id}:${from.latitude},${from.longitude}->${to.id}:${to.latitude},${to.longitude}`;
-        const apiRequestHash = `${travelMode}:${placeGroupVersionHash}`;
+        const apiRequestHash = `${segTravelMode}:${placeGroupVersionHash}`;
 
         const docData: Omit<RouteSegmentDoc, 'generatedAt' | 'updatedAt'> & {
           generatedAt: admin.firestore.FieldValue;
@@ -290,7 +341,7 @@ export const generateNoteRoutes = onCall(
           noteId,
           fromPlaceGroupId: from.id,
           toPlaceGroupId: to.id,
-          travelMode,
+          travelMode: segTravelMode,
           provider: 'google_routes',
           fromLatitude: from.latitude,
           fromLongitude: from.longitude,
@@ -325,7 +376,7 @@ export const generateNoteRoutes = onCall(
             noteId,
             fromPlaceGroupId: from.id,
             toPlaceGroupId: to.id,
-            travelMode,
+            travelMode: segTravelMode,
             provider: 'google_routes',
             fromLatitude: from.latitude,
             fromLongitude: from.longitude,
@@ -341,8 +392,9 @@ export const generateNoteRoutes = onCall(
       }
     }
 
+    const modeLabel = travelMode ?? `mixed(${segmentModes.length}segments)`;
     console.log(
-      `[generateNoteRoutes] noteId=${noteId.slice(0, 8)} uid=***${uid.slice(-4)} travelMode=${travelMode} segmentCount=${segmentPairs.length} cacheHit=${cacheHitCount} generated=${generatedCount} skipped=${skippedCount}`
+      `[generateNoteRoutes] noteId=${noteId.slice(0, 8)} uid=***${uid.slice(-4)} mode=${modeLabel} segmentCount=${segmentPairs.length} cacheHit=${cacheHitCount} generated=${generatedCount} skipped=${skippedCount}`
     );
 
     return {
@@ -423,6 +475,7 @@ export const getNoteRouteSegments = onCall(
         id: d.id,
         fromPlaceGroupId: data.fromPlaceGroupId ?? '',
         toPlaceGroupId: data.toPlaceGroupId ?? '',
+        travelMode: data.travelMode,
         distanceMeters: data.distanceMeters,
         durationSeconds: data.durationSeconds,
         decodedPolyline: data.decodedPolyline,
@@ -436,7 +489,7 @@ export const getNoteRouteSegments = onCall(
 
     return {
       noteId,
-      travelMode: travelMode ?? 'walking', // travelMode 未指定時は walking をデフォルト値として返す
+      travelMode,
       segments,
     };
   }

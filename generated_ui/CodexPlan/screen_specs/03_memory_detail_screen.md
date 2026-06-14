@@ -20,6 +20,15 @@ The page should help users:
 - read or edit the diary
 - move to sharing or collaboration
 
+## Primary Design Principle
+
+Memory Detail should feel like opening a refined scrapbook page.
+
+It should prioritize:
+- emotional recall first
+- clear story structure second
+- utility actions third
+
 ## Two Photo Variants
 
 This screen supports two valid photo presentation patterns.
@@ -38,7 +47,9 @@ Best when:
 - the note is emotionally rich
 - premium storytelling is the goal
 
-## Shared Information Priority
+## Information Priority
+
+Shared across both variants:
 
 1. photos
 2. memory title and date
@@ -46,7 +57,9 @@ Best when:
 4. place and route information
 5. supporting metadata and collaboration
 
-## Shared Page Sections
+## Layout Structure
+
+Shared page sections for both variants:
 
 All variants should contain these sections:
 - top photo area

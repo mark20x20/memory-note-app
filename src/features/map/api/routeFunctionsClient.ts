@@ -6,7 +6,7 @@
 
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '@/core/firebase/client';
-import type { PremiumRouteTravelMode, RouteSegmentSummary } from '../types';
+import type { PremiumRouteTravelMode, RouteSegmentSummary, SegmentTravelModeInput } from '../types';
 
 // ── エラー整形ヘルパー ────────────────────────────────────────────────────────
 
@@ -32,13 +32,16 @@ function toCallableError(err: unknown): CallableError {
 
 export type GenerateNoteRoutesInput = {
   noteId: string;
-  travelMode: PremiumRouteTravelMode;
+  /** 全区間に適用する移動手段。segmentTravelModes と排他的。どちらか一方が必須 */
+  travelMode?: PremiumRouteTravelMode;
+  /** 区間別移動手段（Phase 12.5H-5.5 mixed route mode） */
+  segmentTravelModes?: SegmentTravelModeInput[];
   forceRefresh?: boolean;
 };
 
 export type GenerateNoteRoutesResult = {
   noteId: string;
-  travelMode: PremiumRouteTravelMode;
+  travelMode?: PremiumRouteTravelMode;
   segmentCount: number;
   cacheHitCount: number;
   generatedCount: number;
@@ -65,12 +68,13 @@ export async function generateNoteRoutesCallable(
 
 export type GetNoteRouteSegmentsInput = {
   noteId: string;
-  travelMode: PremiumRouteTravelMode;
+  /** 省略すると全 travelMode のセグメントを返す（mixed mode 対応） */
+  travelMode?: PremiumRouteTravelMode;
 };
 
 export type GetNoteRouteSegmentsResult = {
   noteId: string;
-  travelMode: PremiumRouteTravelMode;
+  travelMode?: PremiumRouteTravelMode;
   segments: RouteSegmentSummary[];
 };
 

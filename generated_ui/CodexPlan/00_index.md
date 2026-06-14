@@ -49,6 +49,14 @@ The UI should feel:
   - remaining high-value screens
   - implementation priority after current set
 
+- `06_react_native_component_architecture_additional_screens.md`
+  - component architecture for additional screens
+  - full photo viewer
+  - place detail
+  - flow detail
+  - members
+  - onboarding
+
 - `screen_specs/`
   - one markdown file per major screen
   - screen purpose
@@ -104,6 +112,7 @@ Recommended batch flow:
 - collaboration / members screen spec: completed
 - flow detail screen spec: completed
 - onboarding screen spec: completed
+- additional screen component architecture: completed
 
 ## Screen Specs Available
 
@@ -122,3 +131,4 @@ Recommended batch flow:
 - [Onboarding](./screen_specs/13_onboarding_screen.md)
 - [Preview / Edit V2 Flow](./03_preview_edit_flow_v2.md)
 - [Additional Screen Backlog](./05_additional_screen_backlog.md)
+- [Additional Screen Component Architecture](./06_react_native_component_architecture_additional_screens.md)

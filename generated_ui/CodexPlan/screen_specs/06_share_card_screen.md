@@ -24,6 +24,15 @@ The Share Card screen should help users:
 - confirm what information appears
 - save or share with confidence
 
+## Primary Design Principle
+
+Share Card should feel like guided curation, not graphic editing.
+
+It should prioritize:
+- emotional share-worthiness
+- readability
+- elegance over customization overload
+
 ## Core Experience
 
 This is not a graphic editor.

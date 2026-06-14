@@ -39,6 +39,7 @@ import type {
   PremiumRouteTravelMode,
   RouteSegmentSummary,
   RouteGenerationStatus,
+  SegmentTravelModeInput,
 } from '@/features/map/types';
 import {
   getTravelModeLabel,
@@ -108,6 +109,24 @@ function getStatusBadge(group: PlaceGroupDoc): { label: string; color: string } 
 function getGroupsWithLocation(groups: PlaceGroupDoc[]): PlaceGroupDoc[] {
   return groups.filter(
     (g) => g.latitude != null && g.longitude != null && g.latitude !== 0 && g.longitude !== 0
+  );
+}
+
+// ── Phase 12.5H-5.5: Mixed Route Mode ────────────────────────────────────────
+
+/** 区間別移動手段エントリ（SegmentTravelModeInput と同型、UI 内部で使用） */
+type SegmentModeEntry = SegmentTravelModeInput;
+
+/** segmentTravelModes 配列から指定区間の移動手段を取得する */
+function getSegmentMode(
+  modes: SegmentModeEntry[],
+  fromId: string,
+  toId: string,
+  fallback: PremiumRouteTravelMode = 'walking'
+): PremiumRouteTravelMode {
+  return (
+    modes.find((e) => e.fromPlaceGroupId === fromId && e.toPlaceGroupId === toId)?.travelMode ??
+    fallback
   );
 }
 
@@ -250,25 +269,57 @@ export default function NoteMapScreen() {
   const isPremiumUser = true;
   const [routeMode, setRouteMode] = useState<RouteDisplayMode>('straight');
   const [premiumTravelMode, setPremiumTravelMode] = useState<PremiumRouteTravelMode>('walking');
+  /** true = 区間別モード（mixed route mode） */
+  const [isMixedMode, setIsMixedMode] = useState(false);
+  /** 区間別モードの各区間移動手段選択 */
+  const [segmentTravelModes, setSegmentTravelModes] = useState<SegmentModeEntry[]>([]);
 
   // ── ルート生成状態 ────────────────────────────────────────────────────────
   const [routeSegments, setRouteSegments] = useState<RouteSegmentSummary[]>([]);
   const [routeGenerationStatus, setRouteGenerationStatus] = useState<RouteGenerationStatus>('idle');
   const [routeGenerationError, setRouteGenerationError] = useState<string | null>(null);
 
-  /** プレミアムモードを選択した際の処理 */
+  /** プレミアムモード（徒歩/車/公共交通）を選択した際の処理 */
   function selectPremiumMode(mode: PremiumRouteTravelMode) {
     setPremiumTravelMode(mode);
     setRouteMode('premium');
+    setIsMixedMode(false);
     // モード変更時にセグメントをリセット（別モードのデータを見せない）
     setRouteSegments([]);
     setRouteGenerationStatus('idle');
     setRouteGenerationError(null);
   }
 
-  /** ルートセグメントを Firestore から読み込む */
+  /** 区間別モードを選択した際の処理 */
+  function selectMixedMode() {
+    setRouteMode('premium');
+    setIsMixedMode(true);
+    setRouteSegments([]);
+    setRouteGenerationStatus('idle');
+    setRouteGenerationError(null);
+    // 区間別モード初期化: 現在の全体モード（transit なら walking）を全区間に適用
+    const gwl = getGroupsWithLocation(groups);
+    if (gwl.length >= 2) {
+      const defaultMode: PremiumRouteTravelMode =
+        premiumTravelMode === 'transit' ? 'walking' : premiumTravelMode;
+      const initialModes: SegmentModeEntry[] = [];
+      for (let i = 0; i < gwl.length - 1; i++) {
+        initialModes.push({
+          fromPlaceGroupId: gwl[i].id,
+          toPlaceGroupId: gwl[i + 1].id,
+          travelMode: defaultMode,
+        });
+      }
+      setSegmentTravelModes(initialModes);
+    }
+  }
+
+  /**
+   * ルートセグメントを Firestore から読み込む。
+   * mode 省略時は全 travelMode のセグメントを取得（mixed mode 用）。
+   */
   const loadRouteSegments = useCallback(
-    async (nId: string, mode: PremiumRouteTravelMode) => {
+    async (nId: string, mode?: PremiumRouteTravelMode) => {
       try {
         const result = await getNoteRouteSegmentsCallable({ noteId: nId, travelMode: mode });
         setRouteSegments(result.segments);
@@ -278,7 +329,7 @@ export default function NoteMapScreen() {
           setRouteGenerationStatus('idle');
         }
       } catch (err) {
-        console.error('[map] loadRouteSegments error:', err);
+        console.warn('[map] loadRouteSegments error:', err);
         // 読み込み失敗は idle のままにして再生成を促す
         setRouteGenerationStatus('idle');
       }
@@ -287,19 +338,29 @@ export default function NoteMapScreen() {
   );
 
   /** ルート生成ボタンを押したときの処理 */
-  const handleGenerateRoutes = useCallback(async () => {
-    if (!noteId) return;
-    setRouteGenerationStatus('loading');
-    setRouteGenerationError(null);
-    try {
-      await generateNoteRoutesCallable({ noteId, travelMode: premiumTravelMode });
-      await loadRouteSegments(noteId, premiumTravelMode);
-    } catch (err) {
-      const callErr = err as CallableError;
-      setRouteGenerationError(callErr.message ?? 'ルートの生成に失敗しました');
-      setRouteGenerationStatus('error');
-    }
-  }, [noteId, premiumTravelMode, loadRouteSegments]);
+  const handleGenerateRoutes = useCallback(
+    async (forceRefresh = false) => {
+      if (!noteId) return;
+      setRouteGenerationStatus('loading');
+      setRouteGenerationError(null);
+      try {
+        if (isMixedMode) {
+          // 区間別モード: transit 以外の区間のみ送信
+          const modesForApi = segmentTravelModes.filter((e) => e.travelMode !== 'transit');
+          await generateNoteRoutesCallable({ noteId, segmentTravelModes: modesForApi, forceRefresh });
+          await loadRouteSegments(noteId); // 全 travelMode のセグメントを取得
+        } else {
+          await generateNoteRoutesCallable({ noteId, travelMode: premiumTravelMode, forceRefresh });
+          await loadRouteSegments(noteId, premiumTravelMode);
+        }
+      } catch (err) {
+        const callErr = err as CallableError;
+        setRouteGenerationError(callErr.message ?? 'ルートの生成に失敗しました');
+        setRouteGenerationStatus('error');
+      }
+    },
+    [noteId, premiumTravelMode, isMixedMode, segmentTravelModes, loadRouteSegments]
+  );
 
   useEffect(() => {
     if (!noteId) return;
@@ -318,33 +379,79 @@ export default function NoteMapScreen() {
   // Premium モード切替時に既存セグメントを読み込む
   useEffect(() => {
     if (!noteId || routeMode !== 'premium' || !isPremiumUser) return;
-    if (premiumTravelMode === 'transit') return;
-    void loadRouteSegments(noteId, premiumTravelMode);
-  }, [noteId, routeMode, premiumTravelMode, isPremiumUser, loadRouteSegments]);
+    if (isMixedMode) {
+      // 区間別モード: 全 travelMode のセグメントを取得
+      void loadRouteSegments(noteId);
+    } else {
+      if (premiumTravelMode === 'transit') return;
+      void loadRouteSegments(noteId, premiumTravelMode);
+    }
+  }, [noteId, routeMode, premiumTravelMode, isMixedMode, isPremiumUser, loadRouteSegments]);
 
   const groupsWithLocation = getGroupsWithLocation(groups);
   const initialRegion = calcRegionForGroups(groupsWithLocation);
 
   // 生成済みセグメントから Polyline 座標を収集
-  const generatedPolylines: { coordinates: { latitude: number; longitude: number }[]; color: string }[] =
-    routeMode === 'premium' && isPremiumUser && premiumTravelMode !== 'transit'
-      ? routeSegments
-          .filter((s) => s.status === 'generated' && s.decodedPolyline && s.decodedPolyline.length > 0)
-          .map((s) => ({
-            coordinates: s.decodedPolyline!,
+  const generatedPolylines: { coordinates: { latitude: number; longitude: number }[]; color: string }[] = [];
+  if (routeMode === 'premium' && isPremiumUser) {
+    if (!isMixedMode && premiumTravelMode !== 'transit') {
+      // 全体モード（徒歩/車）: 全セグメントを同じ色で表示
+      for (const s of routeSegments) {
+        if (s.status === 'generated' && s.decodedPolyline && s.decodedPolyline.length > 0) {
+          generatedPolylines.push({
+            coordinates: s.decodedPolyline,
             color: getRouteColor(premiumTravelMode),
-          }))
-      : [];
+          });
+        }
+      }
+    } else if (isMixedMode) {
+      // 区間別モード: 各区間の選択モードに一致するセグメントを色分けで表示
+      for (const s of routeSegments) {
+        if (s.status !== 'generated' || !s.decodedPolyline || s.decodedPolyline.length === 0) continue;
+        const selectedMode = getSegmentMode(
+          segmentTravelModes,
+          s.fromPlaceGroupId,
+          s.toPlaceGroupId
+        );
+        if (s.travelMode === selectedMode) {
+          generatedPolylines.push({
+            coordinates: s.decodedPolyline,
+            color: getRouteColor(s.travelMode ?? 'walking'),
+          });
+        }
+      }
+    }
+  }
 
   // 失敗区間のフォールバック直線を収集
   const fallbackPolylines: { from: PlaceGroupDoc; to: PlaceGroupDoc }[] = [];
-  if (routeMode === 'premium' && isPremiumUser && premiumTravelMode !== 'transit' && routeSegments.length > 0) {
-    const failedSegments = routeSegments.filter((s) => s.status === 'failed' || s.status === 'stale');
-    for (const seg of failedSegments) {
-      const fromGroup = groupsWithLocation.find((g) => g.id === seg.fromPlaceGroupId);
-      const toGroup = groupsWithLocation.find((g) => g.id === seg.toPlaceGroupId);
-      if (fromGroup && toGroup) {
-        fallbackPolylines.push({ from: fromGroup, to: toGroup });
+  if (routeMode === 'premium' && isPremiumUser) {
+    if (!isMixedMode && premiumTravelMode !== 'transit' && routeSegments.length > 0) {
+      // 全体モード: 失敗/stale なセグメントのフォールバック
+      const failedSegments = routeSegments.filter((s) => s.status === 'failed' || s.status === 'stale');
+      for (const seg of failedSegments) {
+        const fromGroup = groupsWithLocation.find((g) => g.id === seg.fromPlaceGroupId);
+        const toGroup = groupsWithLocation.find((g) => g.id === seg.toPlaceGroupId);
+        if (fromGroup && toGroup) {
+          fallbackPolylines.push({ from: fromGroup, to: toGroup });
+        }
+      }
+    } else if (isMixedMode) {
+      // 区間別モード: 生成済みでない区間をフォールバック表示
+      for (let i = 0; i < groupsWithLocation.length - 1; i++) {
+        const from = groupsWithLocation[i];
+        const to = groupsWithLocation[i + 1];
+        const selectedMode = getSegmentMode(segmentTravelModes, from.id, to.id);
+        if (selectedMode === 'transit') continue; // transit はカード表示のみ
+        const matchSeg = routeSegments.find(
+          (s) =>
+            s.fromPlaceGroupId === from.id &&
+            s.toPlaceGroupId === to.id &&
+            s.travelMode === selectedMode
+        );
+        if (!matchSeg || matchSeg.status !== 'generated' || !matchSeg.decodedPolyline?.length) {
+          fallbackPolylines.push({ from, to });
+        }
       }
     }
   }
@@ -395,8 +502,10 @@ export default function NoteMapScreen() {
 
   // 実ルートPolylineを表示するか（生成済みセグメントがある場合）
   const hasGeneratedRoutes = generatedPolylines.length > 0;
-  // 直線Polylineを表示するか
-  const showStraightLine = routeMode === 'straight' || !hasGeneratedRoutes;
+  // 直線Polylineを表示するか（区間別モードでは per-pair フォールバックを使うので全体直線は非表示）
+  const showStraightLine =
+    routeMode === 'straight' ||
+    (routeMode === 'premium' && !isMixedMode && !hasGeneratedRoutes);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -476,7 +585,7 @@ export default function NoteMapScreen() {
             {/* 直線ルート（無料） */}
             <TouchableOpacity
               style={[styles.routeChip, routeMode === 'straight' && styles.routeChipActive]}
-              onPress={() => setRouteMode('straight')}
+              onPress={() => { setRouteMode('straight'); setIsMixedMode(false); }}
               activeOpacity={0.7}
             >
               <Text
@@ -489,9 +598,9 @@ export default function NoteMapScreen() {
               </Text>
             </TouchableOpacity>
 
-            {/* プレミアムモード（徒歩・車・公共交通） */}
-            {(['walking', 'driving', 'transit'] as PremiumRouteTravelMode[]).map((mode) => {
-              const isSelected = routeMode === 'premium' && premiumTravelMode === mode;
+            {/* プレミアムモード（徒歩・車） */}
+            {(['walking', 'driving'] as PremiumRouteTravelMode[]).map((mode) => {
+              const isSelected = routeMode === 'premium' && !isMixedMode && premiumTravelMode === mode;
               return (
                 <TouchableOpacity
                   key={mode}
@@ -516,6 +625,55 @@ export default function NoteMapScreen() {
                 </TouchableOpacity>
               );
             })}
+
+            {/* 区間別モード */}
+            <TouchableOpacity
+              style={[styles.routeChip, styles.routeChipPremium, isMixedMode && styles.routeChipActive]}
+              onPress={selectMixedMode}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[
+                  styles.routeChipText,
+                  styles.routeChipTextPremium,
+                  isMixedMode && styles.routeChipTextActive,
+                ]}
+              >
+                区間別
+              </Text>
+              {!isPremiumUser ? (
+                <Text style={[styles.routeChipBadge, isMixedMode && styles.routeChipBadgeActive]}>
+                  Premium
+                </Text>
+              ) : null}
+            </TouchableOpacity>
+
+            {/* 公共交通（Premium・次フェーズ対応予定） */}
+            {(() => {
+              const isSelected = routeMode === 'premium' && !isMixedMode && premiumTravelMode === 'transit';
+              return (
+                <TouchableOpacity
+                  style={[styles.routeChip, styles.routeChipPremium, isSelected && styles.routeChipActive]}
+                  onPress={() => selectPremiumMode('transit')}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    style={[
+                      styles.routeChipText,
+                      styles.routeChipTextPremium,
+                      isSelected && styles.routeChipTextActive,
+                    ]}
+                  >
+                    公共交通
+                  </Text>
+                  {!isPremiumUser ? (
+                    <Text style={[styles.routeChipBadge, isSelected && styles.routeChipBadgeActive]}>
+                      Premium
+                    </Text>
+                  ) : null}
+                </TouchableOpacity>
+              );
+            })()}
           </ScrollView>
 
           {/* 直線ルート説明 */}
@@ -544,8 +702,8 @@ export default function NoteMapScreen() {
             </View>
           ) : null}
 
-          {/* Transit 案内（Premium + transit選択時） */}
-          {routeMode === 'premium' && isPremiumUser && premiumTravelMode === 'transit' ? (
+          {/* Transit 案内（Premium + transit選択時 かつ 区間別モードでない） */}
+          {routeMode === 'premium' && isPremiumUser && premiumTravelMode === 'transit' && !isMixedMode ? (
             <View style={styles.transitCard}>
               <Text style={styles.transitCardText}>
                 公共交通ルートは次のフェーズで対応予定です。
@@ -553,15 +711,30 @@ export default function NoteMapScreen() {
             </View>
           ) : null}
 
-          {/* Premium + walking/driving: ルート生成UI */}
-          {routeMode === 'premium' && isPremiumUser && premiumTravelMode !== 'transit' ? (
+          {/* Premium + walking/driving OR 区間別モード: ルート生成UI */}
+          {routeMode === 'premium' && isPremiumUser && (premiumTravelMode !== 'transit' || isMixedMode) ? (
             <RouteGenerationPanel
               travelMode={premiumTravelMode}
+              isMixedMode={isMixedMode}
               status={routeGenerationStatus}
               error={routeGenerationError}
               segments={routeSegments}
               groups={groupsWithLocation}
-              onGenerate={handleGenerateRoutes}
+              segmentTravelModes={segmentTravelModes}
+              onGenerate={() => void handleGenerateRoutes(false)}
+              onRefresh={() => void handleGenerateRoutes(true)}
+              onSegmentModeChange={(fromId, toId, mode) => {
+                setSegmentTravelModes((prev) =>
+                  prev.map((e) =>
+                    e.fromPlaceGroupId === fromId && e.toPlaceGroupId === toId
+                      ? { ...e, travelMode: mode }
+                      : e
+                  )
+                );
+                // モード変更時はセグメントをリセット（生成し直しが必要）
+                setRouteSegments([]);
+                setRouteGenerationStatus('idle');
+              }}
             />
           ) : null}
         </View>
@@ -690,24 +863,32 @@ export default function NoteMapScreen() {
 // ── RouteGenerationPanel ──────────────────────────────────────────────────────
 
 type RouteGenerationPanelProps = {
-  travelMode: Exclude<PremiumRouteTravelMode, 'transit'>;
+  travelMode: PremiumRouteTravelMode;
+  isMixedMode: boolean;
   status: RouteGenerationStatus;
   error: string | null;
   segments: RouteSegmentSummary[];
   groups: PlaceGroupDoc[];
+  segmentTravelModes: SegmentModeEntry[];
   onGenerate: () => void;
+  onRefresh: () => void;
+  onSegmentModeChange: (fromId: string, toId: string, mode: PremiumRouteTravelMode) => void;
 };
 
 function RouteGenerationPanel({
   travelMode,
+  isMixedMode,
   status,
   error,
   segments,
   groups,
+  segmentTravelModes,
   onGenerate,
+  onRefresh,
+  onSegmentModeChange,
 }: RouteGenerationPanelProps) {
-  const modeLabel = getTravelModeLabel(travelMode);
-  const routeColor = getRouteColor(travelMode);
+  const modeLabel = isMixedMode ? '区間別' : getTravelModeLabel(travelMode);
+  const routeColor = isMixedMode ? '#7B68EE' : getRouteColor(travelMode);
   const generatedSegments = segments.filter((s) => s.status === 'generated');
   const failedSegments = segments.filter((s) => s.status === 'failed' || s.status === 'stale');
 
@@ -734,7 +915,123 @@ function RouteGenerationPanel({
     );
   }
 
-  // 生成済みセグメントあり
+  // 区間別モード: 区間セレクター（idle / success 共通表示）
+  if (isMixedMode) {
+    return (
+      <View style={panelStyles.card}>
+        <Text style={panelStyles.cardTitle}>区間ごとの移動手段</Text>
+
+        {/* 区間別セレクター */}
+        {groups.length >= 2
+          ? groups.slice(0, -1).map((fromGroup, idx) => {
+              const toGroup = groups[idx + 1];
+              const currentMode = getSegmentMode(segmentTravelModes, fromGroup.id, toGroup.id);
+              const matchSeg =
+                status === 'success'
+                  ? segments.find(
+                      (s) =>
+                        s.fromPlaceGroupId === fromGroup.id &&
+                        s.toPlaceGroupId === toGroup.id &&
+                        s.travelMode === currentMode
+                    )
+                  : undefined;
+
+              return (
+                <View key={fromGroup.id} style={panelStyles.segmentModeBlock}>
+                  {/* 区間ラベル */}
+                  <Text style={panelStyles.segmentModeTitle} numberOfLines={1}>
+                    #{idx + 1} {fromGroup.label} → #{idx + 2} {toGroup.label}
+                  </Text>
+                  {/* 移動手段チップ */}
+                  <View style={panelStyles.segmentModeChips}>
+                    {(['walking', 'driving', 'transit'] as PremiumRouteTravelMode[]).map((mode) => {
+                      const isActive = currentMode === mode;
+                      const isDisabled = mode === 'transit';
+                      return (
+                        <TouchableOpacity
+                          key={mode}
+                          style={[
+                            panelStyles.segmentModeChip,
+                            isActive && panelStyles.segmentModeChipActive,
+                            isDisabled && panelStyles.segmentModeChipDisabled,
+                          ]}
+                          onPress={() => {
+                            if (!isDisabled) onSegmentModeChange(fromGroup.id, toGroup.id, mode);
+                          }}
+                          disabled={isDisabled}
+                          activeOpacity={isDisabled ? 1 : 0.7}
+                        >
+                          <Text
+                            style={[
+                              panelStyles.segmentModeChipText,
+                              isActive && panelStyles.segmentModeChipTextActive,
+                              isDisabled && panelStyles.segmentModeChipTextDisabled,
+                            ]}
+                          >
+                            {getTravelModeLabel(mode)}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                  {/* 生成済み区間の距離・時間 */}
+                  {matchSeg?.status === 'generated' ? (
+                    <Text
+                      style={[
+                        panelStyles.segmentInfo,
+                        { color: getRouteColor(currentMode) },
+                      ]}
+                    >
+                      {[
+                        getTravelModeLabel(currentMode),
+                        matchSeg.durationSeconds != null
+                          ? formatDuration(matchSeg.durationSeconds)
+                          : null,
+                        matchSeg.distanceMeters != null
+                          ? formatDistance(matchSeg.distanceMeters)
+                          : null,
+                      ]
+                        .filter(Boolean)
+                        .join(' / ')}
+                    </Text>
+                  ) : null}
+                  {/* transit 未対応メモ */}
+                  {currentMode === 'transit' ? (
+                    <Text style={panelStyles.segmentTransitNote}>
+                      ＊ 公共交通は次フェーズで対応予定（直線表示）
+                    </Text>
+                  ) : null}
+                </View>
+              );
+            })
+          : null}
+
+        {/* 生成失敗区間の注記 */}
+        {status === 'success' && failedSegments.length > 0 ? (
+          <Text style={panelStyles.failedNote}>
+            ＊ 一部区間で実ルートを取得できませんでした。直線ルートで表示しています。
+          </Text>
+        ) : null}
+
+        {/* 生成 / 更新ボタン */}
+        {status === 'success' && generatedSegments.length > 0 ? (
+          <TouchableOpacity style={panelStyles.regenBtn} onPress={onRefresh} activeOpacity={0.7}>
+            <Text style={panelStyles.regenBtnText}>選択した移動手段でルートを更新</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={[panelStyles.generateBtn, { backgroundColor: routeColor }]}
+            onPress={onGenerate}
+            activeOpacity={0.7}
+          >
+            <Text style={panelStyles.generateBtnTextWhite}>選択した移動手段でルートを生成</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  }
+
+  // 全体モード（徒歩/車）— 生成済みセグメントあり
   if (status === 'success' && generatedSegments.length > 0) {
     return (
       <View style={panelStyles.card}>
@@ -745,8 +1042,14 @@ function RouteGenerationPanel({
         {segments.map((seg) => {
           const fromIdx = groups.findIndex((g) => g.id === seg.fromPlaceGroupId);
           const toIdx = groups.findIndex((g) => g.id === seg.toPlaceGroupId);
-          const fromLabel = fromIdx >= 0 ? `#${fromIdx + 1} ${groups[fromIdx].label}` : seg.fromPlaceGroupId.slice(0, 6);
-          const toLabel = toIdx >= 0 ? `#${toIdx + 1} ${groups[toIdx].label}` : seg.toPlaceGroupId.slice(0, 6);
+          const fromLabel =
+            fromIdx >= 0
+              ? `#${fromIdx + 1} ${groups[fromIdx].label}`
+              : seg.fromPlaceGroupId.slice(0, 6);
+          const toLabel =
+            toIdx >= 0
+              ? `#${toIdx + 1} ${groups[toIdx].label}`
+              : seg.toPlaceGroupId.slice(0, 6);
 
           if (seg.status === 'failed' || seg.status === 'stale') {
             return (
@@ -783,18 +1086,14 @@ function RouteGenerationPanel({
         ) : null}
 
         {/* 再生成ボタン */}
-        <TouchableOpacity
-          style={[panelStyles.regenBtn]}
-          onPress={onGenerate}
-          activeOpacity={0.7}
-        >
+        <TouchableOpacity style={[panelStyles.regenBtn]} onPress={onRefresh} activeOpacity={0.7}>
           <Text style={panelStyles.regenBtnText}>ルートを更新</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
-  // 未生成（idle）
+  // 全体モード（徒歩/車）— 未生成（idle）
   return (
     <View style={panelStyles.card}>
       <Text style={panelStyles.cardTitle}>{modeLabel}ルートを生成する</Text>
@@ -806,7 +1105,6 @@ function RouteGenerationPanel({
         style={[panelStyles.generateBtn, { backgroundColor: routeColor }]}
         onPress={onGenerate}
         activeOpacity={0.7}
-        disabled={false}
       >
         <Text style={panelStyles.generateBtnTextWhite}>ルートを生成</Text>
       </TouchableOpacity>
@@ -904,6 +1202,56 @@ const panelStyles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: colors.textSecondary,
+  },
+
+  // ── 区間別モード ──────────────────────────────────────────────────────────
+  segmentModeBlock: {
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    gap: 6,
+  },
+  segmentModeTitle: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontWeight: '500',
+  },
+  segmentModeChips: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  segmentModeChip: {
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    backgroundColor: colors.surface,
+  },
+  segmentModeChipActive: {
+    backgroundColor: colors.mapAccent,
+    borderColor: colors.mapAccent,
+  },
+  segmentModeChipDisabled: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    opacity: 0.4,
+  },
+  segmentModeChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  segmentModeChipTextActive: {
+    color: colors.white,
+  },
+  segmentModeChipTextDisabled: {
+    color: colors.textTertiary,
+  },
+  segmentTransitNote: {
+    fontSize: 11,
+    color: colors.textTertiary,
+    lineHeight: 15,
   },
 });
 
