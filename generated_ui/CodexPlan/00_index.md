@@ -83,9 +83,15 @@ Recommended batch flow:
 - home screen spec: completed
 - create memory screen spec: completed
 - memory detail screen spec with two photo variants: completed
+- map screen spec: completed
+- calendar screen spec: completed
+- share card screen spec: completed
 
 ## Screen Specs Available
 
 - [Home](./screen_specs/01_home_screen.md)
 - [Create Memory](./screen_specs/02_create_memory_screen.md)
 - [Memory Detail](./screen_specs/03_memory_detail_screen.md)
+- [Map](./screen_specs/04_map_screen.md)
+- [Calendar](./screen_specs/05_calendar_screen.md)
+- [Share Card](./screen_specs/06_share_card_screen.md)
