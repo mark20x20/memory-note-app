@@ -1,0 +1,13 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "route_segments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "travelMode", "order": "ASCENDING" },
+        { "fieldPath": "generatedAt", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

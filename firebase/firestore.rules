@@ -72,6 +72,28 @@ service cloud.firestore {
           && get(/databases/$(database)/documents/memory_notes/$(noteId)).data.ownerId == request.auth.uid;
       }
 
+      // ── memory_notes/{noteId}/route_segments/{segmentId} ──────────────
+      // Phase 12.5H-4: Route Cache Rules
+      //
+      // read:   note members（owner / editor / viewer）
+      //         viewer もキャッシュ済みルートを閲覧できる
+      // write:  クライアントから禁止。Cloud Functions Admin SDK のみ書き込む。
+      //
+      // viewer に read を許可する理由:
+      //   route_segments は owner/editor が生成したルートのキャッシュ。
+      //   共有ノートを閲覧する viewer が地図でルートを見られることは自然な動作。
+      //   ただしルート生成（API コスト）は owner/editor のみに限定する（Functions 側で制御）。
+      match /route_segments/{segmentId} {
+        // read: note の members（viewer を含む）
+        allow read: if request.auth != null
+          && (get(/databases/$(database)/documents/memory_notes/$(noteId)).data.ownerId == request.auth.uid
+              || (get(/databases/$(database)/documents/memory_notes/$(noteId)).data.members != null
+                  && request.auth.uid in get(/databases/$(database)/documents/memory_notes/$(noteId)).data.members));
+
+        // write: クライアントから禁止（Cloud Functions Admin SDK のみ）
+        allow write: if false;
+      }
+
       // ── memory_notes/{noteId}/place_groups/{placeGroupId} ───────────────
       // Phase 12.5B: Place Intelligence — PlaceGroup / PlaceCandidate Rules
       //

@@ -5,6 +5,18 @@
 import type { Timestamp } from 'firebase-admin/firestore';
 import type { PremiumRouteTravelMode } from './types';
 
+// ── Firestore パス ────────────────────────────────────────────────────────────
+
+/**
+ * route_segments サブコレクションの Firestore パスを返す。
+ *
+ * @param noteId - ノートの Firestore ドキュメント ID
+ * @returns `memory_notes/{noteId}/route_segments`
+ */
+export function getRouteSegmentsCollectionPath(noteId: string): string {
+  return `memory_notes/${noteId}/route_segments`;
+}
+
 // ── segmentId ─────────────────────────────────────────────────────────────────
 
 /**

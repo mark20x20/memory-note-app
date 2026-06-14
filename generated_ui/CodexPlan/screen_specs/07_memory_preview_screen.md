@@ -6,44 +6,42 @@
 
 ## Purpose
 
-The Memory Preview screen is the emotional checkpoint between automatic generation and manual editing.
+The Memory Preview screen is a quiet, emotional reading surface for the memory itself.
 
 This screen should make users feel:
-- the app understood their day
-- the photos, time, and places have already become a story
-- they can review safely before editing anything
-- continuing to edit will polish the memory, not rebuild it
+- they are opening a memory page, not checking system output
+- the day has already become a story
+- photos, time, and place are enough to relive the moment
+- if something needs adjustment, edit is available without breaking immersion
 
 ## Relation To Phase 12.5G-4
 
-This screen matches the decision to separate:
-- preview = a calm review surface
-- edit = an intentional correction surface
+This screen matches the separation of:
+- preview = experience the note
+- edit = adjust and correct the note
 
 The preview screen should therefore:
-- prioritize reading and browsing
-- reduce accidental edits
-- make the generated result feel trustworthy
+- focus on the memory only
+- hide process language and system explanations
+- keep a simple route to the edit screen
 
 ## UX Role
 
 This page supports the transition:
-- photo upload completed
-- automatic grouping finished
-- place candidates and flow generated
-- user reviews the output
-- user chooses to publish or edit
+- the note draft exists
+- the user experiences it as a memory page
+- the user either keeps reading or opens edit
 
 ## Primary Design Principle
 
-Preview is for confidence, not for work.
+Preview is for feeling, not for checking.
 
 Users should first see:
-1. what kind of memory was created
-2. how the day was grouped
-3. whether the title, time, and places feel right
+1. the emotional tone of the day
+2. the photos and the flow of time
+3. the places as part of the story
 
-Only after that should they choose to edit.
+If something feels off, edit should be available quietly.
 
 ## Information Priority
 
@@ -51,8 +49,8 @@ Only after that should they choose to edit.
 2. title + date + place summary
 3. event flow blocks by time
 4. route / map preview
-5. AI diary preview
-6. publish or edit actions
+5. memory note text
+6. edit route
 
 ## Layout Structure
 
@@ -92,21 +90,6 @@ Sizes:
 - thumbnail size: `64` to `76`
 - title: `24`
 - date/location: `13` to `14`
-
-### Section 2: Generation Confidence Card
-
-This reassures the user before they inspect details.
-
-Contents:
-- `写真 18枚から思い出を作成しました`
-- `3つの流れに整理`
-- `2つの場所を推定`
-- optional note if some metadata is partial
-
-Style:
-- soft cream or white card
-- supportive icons
-- calm success tone, not technical
 
 ### Section 3: Event Flow Timeline
 
@@ -154,63 +137,46 @@ Rules:
 - use teal accent and thin line
 - no dense map controls
 
-### Section 5: AI Diary Preview
+### Section 5: Memory Note
 
 Contents:
-- section title such as `思い出メモ下書き`
-- 3 to 6 lines of AI-generated diary text
-- optional “続きを読む”
+- section title such as `思い出メモ`
+- 3 to 6 lines of memory text
+- optional `続きを読む`
 
 Style:
 - elegant editorial card
 - readable line-height
 - slightly warmer paper feel than normal cards
 
-### Section 6: Review Checklist
+### Section 6: Bottom Action Area
 
-This is a compact confirmation zone.
+Primary visible action:
+- `編集する`
 
-Items:
-- title looks right
-- time flow looks right
-- place names mostly correct
-- selected cover feels right
-
-Pattern:
-- check rows with optional warning emphasis
-- not interactive toggles, just visual review cues
-
-### Section 7: Bottom Action Area
-
-Primary action:
-- `この内容で作成`
-
-Secondary action:
-- `編集して整える`
-
-Tertiary action:
-- `写真を見直す`
+Optional secondary action:
+- `共有を見る`
 
 Rules:
-- primary CTA stays warm and confident
-- edit is clearly available but secondary
-- if sticky footer is used, keep it soft and not too tall
+- keep actions minimal
+- do not present system confirmation language
+- edit should be available but should not dominate the page
+- if sticky footer is used, keep it visually light
 
 ## Interaction States
 
-### State A: Fully Ready
+### State A: Standard
 
 Show:
 - full preview sections
-- strong create CTA
-- edit CTA below
+- light edit CTA
 
 ### State B: Partial Place Confidence
 
 Show:
-- soft amber badge on affected flow cards
-- clear edit invitation
-- do not block note creation
+- soft ambiguity in place label only if needed
+- no technical warning block on preview
+- edit route available for correction
 
 ### State C: Long Trip / Many Photos
 
@@ -223,19 +189,17 @@ Show:
 
 If permissions are limited in shared notes:
 - hide edit CTA
-- keep create/publish wording adjusted if needed
+- keep the screen purely view-focused
 
 ## Components
 
 - preview header
 - hero image block
 - thumbnail strip
-- generation confidence card
 - event flow timeline cards
 - route preview card
-- diary preview card
-- review checklist card
-- dual bottom CTA area
+- memory note card
+- minimal bottom action area
 
 ## Font Sizes
 
@@ -259,17 +223,18 @@ If permissions are limited in shared notes:
 ## Visual Notes
 
 - this screen should feel like opening a polished first draft
-- it must feel more emotional than technical
+- it must feel fully emotional and non-technical
 - the timeline should feel scrapbook-like, not enterprise-like
 - let photos and whitespace do most of the work
+- remove all unnecessary system explanation language
 
 ## Handoff To Edit Screen
 
 The transition to edit should feel like:
-- `内容を壊す` ではなく `整える`
-- `やり直し` ではなく `気になるところだけ直す`
+- `修正作業に入る`
+- not `確認作業を続ける`
 
 The edit button should therefore feel:
-- accessible
+- quiet
 - safe
-- intentional
+- always available when needed
