@@ -21,7 +21,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import MapView, { Marker, type Region } from 'react-native-maps';
+import MapView, { Marker, Polyline, type Region } from 'react-native-maps';
 import { router, useLocalSearchParams } from 'expo-router';
 import { ScreenHeader } from '@/shared/components/ui';
 import { colors } from '@/shared/theme/colors';
@@ -295,6 +295,19 @@ export default function NoteMapScreen() {
         showsCompass
         showsScale
       >
+        {/* 訪問順ルート線（PlaceGroup が2件以上あるときのみ） */}
+        {groupsWithLocation.length >= 2 ? (
+          <Polyline
+            coordinates={groupsWithLocation.map((g) => ({
+              latitude: g.latitude,
+              longitude: g.longitude,
+            }))}
+            strokeColor="#4FA8A1"
+            strokeWidth={2.5}
+            lineDashPattern={[8, 5]}
+          />
+        ) : null}
+
         {groupsWithLocation.map((group, idx) => (
           <Marker
             key={group.id}

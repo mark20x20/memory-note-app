@@ -5,7 +5,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import MapView, { Marker, type Region } from 'react-native-maps';
+import MapView, { Marker, Polyline, type Region } from 'react-native-maps';
 import { router } from 'expo-router';
 import { colors } from '@/shared/theme/colors';
 import type { PlaceGroupDoc, PhotoLocation } from '@/features/map/types';
@@ -121,6 +121,13 @@ export function EventMapPreview({ noteId, photoLocations = [], height = 180 }: P
     ? groups.map((g) => ({ latitude: g.latitude, longitude: g.longitude }))
     : photoLocations.map((p) => ({ latitude: p.latitude, longitude: p.longitude }));
 
+  // Polyline 用: 座標のある PlaceGroup を sortOrder 順に並べた座標列
+  const polylineCoords = groups
+    .filter(
+      (g) => g.latitude != null && g.longitude != null && g.latitude !== 0 && g.longitude !== 0
+    )
+    .map((g) => ({ latitude: g.latitude, longitude: g.longitude }));
+
   const region = calcRegion(locs);
 
   if (!region) {
@@ -144,6 +151,16 @@ export function EventMapPreview({ noteId, photoLocations = [], height = 180 }: P
           pitchEnabled={false}
           rotateEnabled={false}
         >
+          {/* 訪問順ルート線（PlaceGroup が2件以上あるときのみ） */}
+          {useGroups && polylineCoords.length >= 2 ? (
+            <Polyline
+              coordinates={polylineCoords}
+              strokeColor={colors.mapAccent}
+              strokeWidth={2}
+              lineDashPattern={[6, 4]}
+            />
+          ) : null}
+
           {useGroups
             ? groups.map((g, idx) => (
                 <Marker

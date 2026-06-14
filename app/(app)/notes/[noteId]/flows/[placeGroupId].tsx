@@ -169,12 +169,21 @@ export default function FlowPreviewScreen() {
           <View style={styles.thumbSection}>
             <View style={styles.thumbRow}>
               {thumbURLs.map((url, ti) => (
-                <Image
+                <TouchableOpacity
                   key={ti}
-                  source={{ uri: url }}
-                  style={styles.thumb}
-                  resizeMode="cover"
-                />
+                  activeOpacity={0.85}
+                  onPress={() =>
+                    router.push(
+                      `/(app)/notes/${noteId}/photos/viewer?placeGroupId=${placeGroupId}&initialIndex=${ti}` as any
+                    )
+                  }
+                >
+                  <Image
+                    source={{ uri: url }}
+                    style={styles.thumb}
+                    resizeMode="cover"
+                  />
+                </TouchableOpacity>
               ))}
             </View>
           </View>

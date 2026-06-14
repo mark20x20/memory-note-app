@@ -193,14 +193,23 @@ export default function NoteDetailScreen() {
             <ActivityIndicator color={colors.primary} style={styles.photosLoader} />
           ) : notePhotos.length > 0 ? (
             <View style={styles.photoGrid}>
-              {notePhotos.map((photo) => (
-                <View key={photo.id} style={styles.photoGridItem}>
+              {notePhotos.map((photo, photoIdx) => (
+                <TouchableOpacity
+                  key={photo.id}
+                  style={styles.photoGridItem}
+                  onPress={() =>
+                    router.push(
+                      `/(app)/notes/${noteId}/photos/viewer?initialIndex=${photoIdx}` as any
+                    )
+                  }
+                  activeOpacity={0.85}
+                >
                   <Image
                     source={{ uri: photo.downloadURL }}
                     style={styles.photoGridImage}
                     resizeMode="cover"
                   />
-                </View>
+                </TouchableOpacity>
               ))}
             </View>
           ) : (
