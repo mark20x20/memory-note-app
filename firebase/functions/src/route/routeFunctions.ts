@@ -1,6 +1,7 @@
 // Phase 12.5H-3: Google Routes API — Callable Functions skeleton
 // Phase 12.5H-4: route_segments Firestore read/delete 本実装
 // Phase 12.5H-5: generateNoteRoutes walking/driving 本実装
+// Phase 12.5H-7A: Premium / Quota チェック本実装
 //
 // セキュリティ方針:
 // - GOOGLE_ROUTES_API_KEY は Secret Manager の defineSecret() 経由でのみ参照する
@@ -24,6 +25,8 @@ import type {
   RouteSegmentDoc,
   RouteSegmentStatus,
   SegmentTravelModeInput,
+  PremiumEntitlementDoc,
+  RouteUsageDoc,
 } from './types';
 import {
   getRouteSegmentsCollectionPath,
@@ -39,6 +42,9 @@ import { decodePolyline } from './polylineUtils';
 const REGION = 'asia-northeast1';
 
 const VALID_TRAVEL_MODES: PremiumRouteTravelMode[] = ['walking', 'driving', 'transit'];
+
+const MAX_GENERATE_COUNT_PER_DAY = 10;
+const MAX_FORCE_REFRESH_COUNT_PER_DAY = 3;
 
 // ── Secret Manager ────────────────────────────────────────────────────────────
 
@@ -101,6 +107,116 @@ async function assertNoteMember(
   }
 }
 
+// ── Phase 12.5H-7A: Premium / Quota ヘルパー ─────────────────────────────────
+
+/**
+ * UTC yyyyMMdd 形式の日付キーを返す（クォータ日次集計用）。
+ */
+function getDateKey(): string {
+  const now = new Date();
+  const y = now.getUTCFullYear();
+  const m = String(now.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(now.getUTCDate()).padStart(2, '0');
+  return `${y}${m}${d}`;
+}
+
+/**
+ * Firestore の users/{uid}/entitlements/premium ドキュメントを確認し、
+ * Premium プランが有効でなければ permission-denied を throw する。
+ */
+async function assertPremiumUser(
+  db: admin.firestore.Firestore,
+  uid: string
+): Promise<void> {
+  const snap = await db
+    .collection('users').doc(uid)
+    .collection('entitlements').doc('premium')
+    .get();
+
+  if (!snap.exists) {
+    throw new HttpsError(
+      'permission-denied',
+      'ルート生成はプレミアムプランのみ利用可能です。アップグレードをご検討ください。'
+    );
+  }
+
+  const data = snap.data() as Partial<PremiumEntitlementDoc>;
+
+  if (!data?.active) {
+    throw new HttpsError(
+      'permission-denied',
+      'ルート生成はプレミアムプランのみ利用可能です。アップグレードをご検討ください。'
+    );
+  }
+
+  if (data.expiresAt && new Date() > data.expiresAt.toDate()) {
+    throw new HttpsError(
+      'permission-denied',
+      'プレミアムプランの有効期限が切れています。プランを更新してください。'
+    );
+  }
+}
+
+/**
+ * 1日あたりのルート生成回数クォータをチェックし、上限に達していれば resource-exhausted を throw する。
+ * 上限に達していなければカウントをインクリメントする（トランザクション）。
+ *
+ * - 生成: 1日 MAX_GENERATE_COUNT_PER_DAY 回
+ * - forceRefresh: 1日 MAX_FORCE_REFRESH_COUNT_PER_DAY 回
+ */
+async function assertRouteGenerationQuota(
+  db: admin.firestore.Firestore,
+  uid: string,
+  forceRefresh: boolean
+): Promise<void> {
+  const dateKey = getDateKey();
+  const usageRef = db
+    .collection('users').doc(uid)
+    .collection('route_usage').doc(dateKey);
+
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(usageRef);
+    const data = snap.exists ? (snap.data() as Partial<RouteUsageDoc>) : null;
+    const generateCount = data?.generateCount ?? 0;
+    const forceRefreshCount = data?.forceRefreshCount ?? 0;
+
+    if (generateCount >= MAX_GENERATE_COUNT_PER_DAY) {
+      throw new HttpsError(
+        'resource-exhausted',
+        `本日のルート生成回数の上限（${MAX_GENERATE_COUNT_PER_DAY}回）に達しました。明日またお試しください。`
+      );
+    }
+
+    if (forceRefresh && forceRefreshCount >= MAX_FORCE_REFRESH_COUNT_PER_DAY) {
+      throw new HttpsError(
+        'resource-exhausted',
+        `本日のルート更新回数の上限（${MAX_FORCE_REFRESH_COUNT_PER_DAY}回）に達しました。明日またお試しください。`
+      );
+    }
+
+    const serverTimestamp = admin.firestore.FieldValue.serverTimestamp();
+
+    if (snap.exists) {
+      const update: Record<string, admin.firestore.FieldValue | number> = {
+        generateCount: admin.firestore.FieldValue.increment(1),
+        updatedAt: serverTimestamp,
+      };
+      if (forceRefresh) {
+        update.forceRefreshCount = admin.firestore.FieldValue.increment(1);
+      }
+      tx.update(usageRef, update);
+    } else {
+      tx.set(usageRef, {
+        dateKey,
+        generateCount: 1,
+        forceRefreshCount: forceRefresh ? 1 : 0,
+        createdAt: serverTimestamp,
+        updatedAt: serverTimestamp,
+      });
+    }
+  });
+}
+
 // ── PlaceGroup 型（Firestore ドキュメントから取得） ────────────────────────────
 
 type PlaceGroupData = {
@@ -126,9 +242,9 @@ type PlaceGroupData = {
  * - decodedPolyline を Firestore に保存（expiresAt = 30日後）
  * - transit は未対応（Phase 12.5H-6 で実装予定）
  *
- * Premium判定:
- * - TODO Phase 12.5H-7: isPremiumUser = true のハードコードを RevenueCat 本実装に差し替える。
- *   本番リリース前に必ず置き換えること。
+ * Premium判定 (Phase 12.5H-7A):
+ * - Firestore users/{uid}/entitlements/premium の active フラグを確認する。
+ * - 1日あたりの生成回数クォータ（10回 / forceRefresh 3回）を transaction で管理する。
  */
 export const generateNoteRoutes = onCall(
   {
@@ -191,18 +307,11 @@ export const generateNoteRoutes = onCall(
     // 3. ノート取得 + owner/editor 権限確認
     await assertOwnerOrEditor(db, noteId, uid);
 
-    // 4. Premium 判定（仮実装）
-    // TODO Phase 12.5H-7: この isPremiumUser = true のハードコードを
-    //   RevenueCat または Firestore entitlement による本実装に差し替えること。
-    //   本番リリース前に必ず置き換えること。
-    const isPremiumUser = true;
-    if (!isPremiumUser) {
-      throw new HttpsError('permission-denied', 'ルート生成はプレミアムプランのみ利用可能です');
-    }
+    // 4. Premium 確認 (Phase 12.5H-7A)
+    await assertPremiumUser(db, uid);
 
-    // 5. TODO Phase 12.5H-7: ルート生成回数クォータチェックを実装する。
-    //    1日 10回 / forceRefresh は 1日 3回の上限を設ける。
-    //    await assertRouteGenerationQuota(db, uid, forceRefresh);
+    // 5. quota チェック (Phase 12.5H-7A)
+    await assertRouteGenerationQuota(db, uid, forceRefresh);
 
     // 6. PlaceGroup を sortOrder 昇順で取得
     let groupsQuery: admin.firestore.Query = db

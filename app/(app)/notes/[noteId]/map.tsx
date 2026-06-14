@@ -1,6 +1,7 @@
 // Phase 12.5F-1: Map screen — 訪れた場所を番号付きピンで地図表示
 // Phase 12.5H-1: Route Plan Mode — ルートモード選択UI
 // Phase 12.5H-5: Walking / Driving 実ルート生成・表示
+// Phase 12.5H-7A: Premium / Quota — Firestore entitlement チェック本実装
 //
 // Route: /(app)/notes/[noteId]/map
 //
@@ -12,7 +13,7 @@
 // - 簡易旅順プレビュー
 // - 空状態
 // - owner/editor: 候補確認・変更可 / viewer: 確認済みのみ詳細遷移可
-// - walking / driving ルート生成（Premium仮実装）
+// - walking / driving ルート生成（Premium: Firestore entitlement チェック済み）
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -53,6 +54,7 @@ import {
   getNoteRouteSegmentsCallable,
 } from '@/features/map/api/routeFunctionsClient';
 import type { CallableError } from '@/features/map/api/routeFunctionsClient';
+import { usePremiumStatus } from '@/features/map/hooks/usePremiumStatus';
 
 // ── 定数 ────────────────────────────────────────────────────────────────────
 
@@ -263,10 +265,10 @@ export default function NoteMapScreen() {
 
   const userCanEdit = uid && note ? canEdit(note, uid) : false;
 
+  // ── Premium ステータス（Phase 12.5H-7A） ──────────────────────────────────
+  const { isPremiumUser, loading: premiumLoading } = usePremiumStatus(uid);
+
   // ── ルート表示モード ──────────────────────────────────────────────────────
-  // TODO Phase 12.5H-7: Replace isPremiumUser with real RevenueCat / entitlement check.
-  //   This is a development stub only. Must be replaced before production release.
-  const isPremiumUser = true;
   const [routeMode, setRouteMode] = useState<RouteDisplayMode>('straight');
   const [premiumTravelMode, setPremiumTravelMode] = useState<PremiumRouteTravelMode>('walking');
   /** true = 区間別モード（mixed route mode） */
@@ -456,7 +458,7 @@ export default function NoteMapScreen() {
     }
   }
 
-  if (noteLoading || groupsLoading) {
+  if (noteLoading || groupsLoading || premiumLoading) {
     return (
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         <ScreenHeader title="地図" onBack={() => router.back()} />
@@ -699,6 +701,13 @@ export default function NoteMapScreen() {
               >
                 <Text style={styles.premiumCardBtnText}>今は直線ルートで表示</Text>
               </TouchableOpacity>
+              {__DEV__ && uid ? (
+                <Text style={styles.premiumCardDevGuide}>
+                  {'[DEV] Firestore Console で Premium を付与:\n'}
+                  {'users/' + uid + '/entitlements/premium\n'}
+                  {'{ active: true, source: "manual_dev", updatedAt: <serverTimestamp> }'}
+                </Text>
+              ) : null}
             </View>
           ) : null}
 
@@ -1411,6 +1420,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: colors.textSecondary,
+  },
+  premiumCardDevGuide: {
+    fontSize: 10,
+    color: colors.textTertiary,
+    marginTop: 8,
+    lineHeight: 15,
+    fontFamily: 'monospace' as const,
   },
 
   // Section

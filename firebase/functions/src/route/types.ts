@@ -1,7 +1,45 @@
 // Phase 12.5H-3: Google Routes API — 型定義
+// Phase 12.5H-7A: Premium / Quota types を追加
 // firebase-admin の Timestamp を使用（クライアント SDK の firebase/firestore とは別）
 
 import type { Timestamp } from 'firebase-admin/firestore';
+
+// ── Phase 12.5H-7A: Premium / Quota Firestore ドキュメント型 ─────────────────
+
+/**
+ * Firestore: users/{uid}/entitlements/premium
+ *
+ * Cloud Functions Admin SDK が書き込む。
+ * クライアントからの write は Firestore Rules で禁止。
+ *
+ * source:
+ * - 'manual_dev': 開発中の手動付与
+ * - 'revenuecat': RevenueCat Webhook 経由（Phase 12.5H-7B 以降）
+ * - 'admin': 管理者による手動操作
+ */
+export type PremiumEntitlementDoc = {
+  active: boolean;
+  source: 'manual_dev' | 'revenuecat' | 'admin';
+  plan?: 'premium_monthly' | 'premium_yearly' | 'trial';
+  updatedAt: Timestamp;
+  expiresAt?: Timestamp | null;
+};
+
+/**
+ * Firestore: users/{uid}/route_usage/{yyyyMMdd}
+ *
+ * generateNoteRoutes の呼び出し1回ごとに generateCount +1。
+ * forceRefresh=true のとき forceRefreshCount も +1。
+ * Cloud Functions Admin SDK がトランザクションで書き込む。
+ * クライアントからの write は Firestore Rules で禁止。
+ */
+export type RouteUsageDoc = {
+  dateKey: string;          // UTC yyyyMMdd 例: "20260615"
+  generateCount: number;    // その日のルート生成回数
+  forceRefreshCount: number; // その日の forceRefresh 回数
+  updatedAt: Timestamp;
+  createdAt: Timestamp;
+};
 
 // ── 移動手段 ──────────────────────────────────────────────────────────────────
 

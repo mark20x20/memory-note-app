@@ -2,12 +2,28 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ── users/{uid} ──────────────────────────────────────────────────────────
+    // ── users/{userId} ───────────────────────────────────────────────────────
     // Phase 11: 認証済みユーザーなら誰でも read 可（メンバー表示のため）。
     // write は自分自身のドキュメントのみ。
     match /users/{userId} {
       allow read: if request.auth != null;
       allow write: if request.auth != null && request.auth.uid == userId;
+
+      // Phase 12.5H-7A: Premium エンタイトルメント
+      // read:  自分自身のみ（Premium ステータスは本人のみ参照）
+      // write: クライアントから禁止（Cloud Functions Admin SDK のみ書き込む）
+      match /entitlements/{entitlementId} {
+        allow read: if request.auth != null && request.auth.uid == userId;
+        allow write: if false;
+      }
+
+      // Phase 12.5H-7A: ルート生成クォータ（日次）
+      // read:  自分自身のみ（残回数表示用）
+      // write: クライアントから禁止（Cloud Functions Admin SDK のみ書き込む）
+      match /route_usage/{dateKey} {
+        allow read: if request.auth != null && request.auth.uid == userId;
+        allow write: if false;
+      }
     }
 
     // ── memory_notes/{noteId} ────────────────────────────────────────────────
