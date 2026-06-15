@@ -554,16 +554,23 @@ export const getNoteRouteSegments = onCall(
     if (typeof data.noteId !== 'string' || !data.noteId.trim()) {
       throw new HttpsError('invalid-argument', 'noteId が不正です');
     }
-    // travelMode は任意だが、指定する場合は有効な値であること
+    // travelMode は任意。null / undefined / '' は「全件取得（フィルタなし）」として扱う。
+    // 文字列が存在していて、かつ有効な値でない場合のみ invalid-argument とする。
+    const rawTravelMode = (data as Record<string, unknown>).travelMode;
     if (
-      data.travelMode !== undefined &&
-      !VALID_TRAVEL_MODES.includes(data.travelMode as PremiumRouteTravelMode)
+      rawTravelMode !== undefined &&
+      rawTravelMode !== null &&
+      rawTravelMode !== '' &&
+      !VALID_TRAVEL_MODES.includes(rawTravelMode as PremiumRouteTravelMode)
     ) {
       throw new HttpsError('invalid-argument', 'travelMode が不正です（walking / driving / transit）');
     }
 
     const noteId = data.noteId.trim();
-    const travelMode = data.travelMode as PremiumRouteTravelMode | undefined;
+    const travelMode: PremiumRouteTravelMode | undefined =
+      rawTravelMode && VALID_TRAVEL_MODES.includes(rawTravelMode as PremiumRouteTravelMode)
+        ? (rawTravelMode as PremiumRouteTravelMode)
+        : undefined;
 
     const db = admin.firestore();
 

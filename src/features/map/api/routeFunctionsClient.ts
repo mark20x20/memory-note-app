@@ -78,6 +78,9 @@ export type GetNoteRouteSegmentsResult = {
   segments: RouteSegmentSummary[];
 };
 
+// travelMode として送信してよい値のみ
+const VALID_SEGMENT_TRAVEL_MODES = ['walking', 'driving', 'transit'] as const;
+
 export async function getNoteRouteSegmentsCallable(
   input: GetNoteRouteSegmentsInput
 ): Promise<GetNoteRouteSegmentsResult> {
@@ -86,8 +89,18 @@ export async function getNoteRouteSegmentsCallable(
     functions,
     'getNoteRouteSegments'
   );
+  // travelMode が有効な値のときのみ payload に含める。
+  // undefined / null / 'mixed' / 'straight' / 'premium' は送らない（Firebase callable が null に変換する場合がある）。
+  const payload: GetNoteRouteSegmentsInput = { noteId: input.noteId };
+  if (
+    input.travelMode &&
+    (VALID_SEGMENT_TRAVEL_MODES as readonly string[]).includes(input.travelMode)
+  ) {
+    payload.travelMode = input.travelMode;
+  }
+  if (__DEV__) console.log('[routeFunctionsClient] getNoteRouteSegments payload', payload);
   try {
-    const result = await fn(input);
+    const result = await fn(payload);
     return result.data;
   } catch (err) {
     throw toCallableError(err);

@@ -116,6 +116,14 @@ function getGroupsWithLocation(groups: PlaceGroupDoc[]): PlaceGroupDoc[] {
 
 // ── Phase 12.5H-5.5: Mixed Route Mode ────────────────────────────────────────
 
+/**
+ * loadRouteSegments に渡す有効なモード。
+ * - 'walking' / 'driving' / 'transit': 全体モード（getNoteRouteSegments に travelMode を渡す）
+ * - 'mixed': 区間別モード（getNoteRouteSegments に travelMode を渡さず全件取得）
+ * 'straight' / 'premium' / routeMode などを直接渡さないこと。
+ */
+type LoadRouteEffectiveMode = PremiumRouteTravelMode | 'mixed';
+
 /** 区間別移動手段エントリ（SegmentTravelModeInput と同型、UI 内部で使用） */
 type SegmentModeEntry = SegmentTravelModeInput;
 
@@ -283,7 +291,7 @@ export default function NoteMapScreen() {
 
   /** プレミアムモード（徒歩/車/公共交通）を選択した際の処理 */
   function selectPremiumMode(mode: PremiumRouteTravelMode) {
-    if (__DEV__) console.log('[map] transit selected', { mode });
+    if (__DEV__) console.log('[map] premium mode selected', { mode });
     setPremiumTravelMode(mode);
     setRouteMode('premium');
     setIsMixedMode(false);
@@ -319,18 +327,26 @@ export default function NoteMapScreen() {
 
   /**
    * ルートセグメントを Firestore から読み込む。
-   * mode 省略時は全 travelMode のセグメントを取得（mixed mode 用）。
+   * effectiveMode:
+   *   'mixed'  → travelMode を送らず全件取得（区間別モード）
+   *   その他   → travelMode を指定してフィルタ取得
+   * 'straight' / 'premium' / routeMode などを直接渡さないこと。
    */
   const loadRouteSegments = useCallback(
-    async (nId: string, mode?: PremiumRouteTravelMode) => {
+    async (targetNoteId: string, effectiveMode: LoadRouteEffectiveMode) => {
       try {
-        const result = await getNoteRouteSegmentsCallable({ noteId: nId, travelMode: mode });
-        if (__DEV__) console.log('[map] routeSegments resultCount', { count: result.segments.length, travelMode: mode });
-        setRouteSegments(result.segments);
-        if (result.segments.length > 0) {
-          setRouteGenerationStatus('success');
+        if (effectiveMode === 'mixed') {
+          if (__DEV__) console.log('[map] loadRouteSegments effectiveMode=mixed');
+          const result = await getNoteRouteSegmentsCallable({ noteId: targetNoteId });
+          if (__DEV__) console.log('[map] routeSegments resultCount', { count: result.segments.length, effectiveMode: 'mixed' });
+          setRouteSegments(result.segments);
+          setRouteGenerationStatus(result.segments.length > 0 ? 'success' : 'idle');
         } else {
-          setRouteGenerationStatus('idle');
+          if (__DEV__) console.log('[map] getNoteRouteSegments final input', { noteId: targetNoteId, travelMode: effectiveMode });
+          const result = await getNoteRouteSegmentsCallable({ noteId: targetNoteId, travelMode: effectiveMode });
+          if (__DEV__) console.log('[map] routeSegments resultCount', { count: result.segments.length, effectiveMode });
+          setRouteSegments(result.segments);
+          setRouteGenerationStatus(result.segments.length > 0 ? 'success' : 'idle');
         }
       } catch (err) {
         console.warn('[map] loadRouteSegments error:', err);
@@ -353,7 +369,8 @@ export default function NoteMapScreen() {
           const modesForApi = segmentTravelModes;
           if (__DEV__) console.log('[map] handleGenerateRoutes input', { isMixedMode: true, modesForApi, forceRefresh });
           await generateNoteRoutesCallable({ noteId, segmentTravelModes: modesForApi, forceRefresh });
-          await loadRouteSegments(noteId); // 全 travelMode のセグメントを取得
+          // 区間別は travelMode を送らず全件取得
+          await loadRouteSegments(noteId, 'mixed');
         } else {
           if (__DEV__) console.log('[map] handleGenerateRoutes input', { isMixedMode: false, travelMode: premiumTravelMode, forceRefresh });
           await generateNoteRoutesCallable({ noteId, travelMode: premiumTravelMode, forceRefresh });
@@ -386,11 +403,10 @@ export default function NoteMapScreen() {
   useEffect(() => {
     if (!noteId || routeMode !== 'premium' || !isPremiumUser) return;
     if (isMixedMode) {
-      // 区間別モード: 全 travelMode のセグメントを取得
-      void loadRouteSegments(noteId);
+      // 区間別モード: travelMode を送らず全件取得
+      void loadRouteSegments(noteId, 'mixed');
     } else {
       // 全体モード（徒歩/車/公共交通）: travelMode を指定して取得
-      if (__DEV__) console.log('[map] getNoteRouteSegments final input', { noteId, travelMode: premiumTravelMode });
       void loadRouteSegments(noteId, premiumTravelMode);
     }
   }, [noteId, routeMode, premiumTravelMode, isMixedMode, isPremiumUser, loadRouteSegments]);
