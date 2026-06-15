@@ -217,6 +217,18 @@ async function assertRouteGenerationQuota(
   });
 }
 
+// ── Firestore undefined 除去ヘルパー ──────────────────────────────────────────
+
+/**
+ * オブジェクトのトップレベルから undefined フィールドを除去して返す。
+ * Firestore は undefined 値を拒否するため、保存前に必ず通す。
+ */
+function removeUndefinedFields<T extends Record<string, unknown>>(obj: T): T {
+  return Object.fromEntries(
+    Object.entries(obj).filter(([, v]) => v !== undefined)
+  ) as T;
+}
+
 // ── PlaceGroup 型（Firestore ドキュメントから取得） ────────────────────────────
 
 type PlaceGroupData = {
@@ -294,12 +306,8 @@ export const generateNoteRoutes = onCall(
       : [];
     const forceRefresh = data.forceRefresh === true;
 
-    // 全体モードで transit は未実装
     if (travelMode === 'transit') {
-      throw new HttpsError(
-        'unimplemented',
-        '公共交通ルートは次のフェーズで対応予定です（Phase 12.5H-6）'
-      );
+      console.info(`[generateNoteRoutes] travelMode=transit uid=***${uid.slice(-4)} noteId=${noteId.slice(0, 8)}`);
     }
 
     const db = admin.firestore();
@@ -389,15 +397,6 @@ export const generateNoteRoutes = onCall(
         segTravelMode = found.travelMode;
       }
 
-      // transit は未実装: スキップ（区間別モードでは throw しない）
-      if (segTravelMode === 'transit') {
-        console.log(
-          `[generateNoteRoutes] transit not implemented for ${from.id}->${to.id}, skipping`
-        );
-        skippedCount++;
-        continue;
-      }
-
       const segmentId = buildRouteSegmentId({
         fromPlaceGroupId: from.id,
         toPlaceGroupId: to.id,
@@ -441,26 +440,24 @@ export const generateNoteRoutes = onCall(
         const placeGroupVersionHash = `${from.id}:${from.latitude},${from.longitude}->${to.id}:${to.latitude},${to.longitude}`;
         const apiRequestHash = `${segTravelMode}:${placeGroupVersionHash}`;
 
-        const docData: Omit<RouteSegmentDoc, 'generatedAt' | 'updatedAt'> & {
-          generatedAt: admin.firestore.FieldValue;
-          updatedAt: admin.firestore.FieldValue;
-          expiresAt: admin.firestore.Timestamp;
-        } = {
+        // undefined フィールドを除去してから Firestore に保存
+        // transit は routeSummary が返らないため条件付き設定が必要
+        const docData = removeUndefinedFields({
           id: segmentId,
           noteId,
           fromPlaceGroupId: from.id,
           toPlaceGroupId: to.id,
           travelMode: segTravelMode,
-          provider: 'google_routes',
+          provider: 'google_routes' as const,
           fromLatitude: from.latitude,
           fromLongitude: from.longitude,
           toLatitude: to.latitude,
           toLongitude: to.longitude,
-          distanceMeters: routeResult.distanceMeters,
-          durationSeconds: routeResult.durationSeconds,
-          encodedPolyline: routeResult.encodedPolyline,
+          distanceMeters: routeResult.distanceMeters,   // undefined → 除去
+          durationSeconds: routeResult.durationSeconds,  // undefined → 除去
+          encodedPolyline: routeResult.encodedPolyline,  // 必ず存在する（routesClient で保証）
           decodedPolyline,
-          routeSummary: routeResult.routeSummary,
+          routeSummary: routeResult.routeSummary,        // transit では undefined → 除去
           warnings: routeResult.warnings ?? [],
           status: 'generated' as RouteSegmentStatus,
           generatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -468,17 +465,26 @@ export const generateNoteRoutes = onCall(
           expiresAt: admin.firestore.Timestamp.fromDate(calcRouteExpiresAt()),
           apiRequestHash,
           placeGroupVersionHash,
-        };
+        });
 
         await segRef.set(docData);
+
+        console.info(`[generateNoteRoutes] segment generated`, {
+          segmentId,
+          travelMode: segTravelMode,
+          distanceMeters: routeResult.distanceMeters,
+          durationSeconds: routeResult.durationSeconds,
+          hasEncodedPolyline: !!routeResult.encodedPolyline,
+          hasRouteSummary: !!routeResult.routeSummary,
+        });
+
         generatedCount++;
       } catch (err) {
-        console.error(
-          `[generateNoteRoutes] segment=${segmentId} failed:`,
-          err instanceof Error ? err.message : String(err)
-        );
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        console.error(`[generateNoteRoutes] segment=${segmentId} travelMode=${segTravelMode} failed: ${errorMessage}`);
 
-        // 失敗してもセグメントレコードを残す（次回 stale として再生成を試みる）
+        // 失敗してもセグメントレコードを残す（isRouteSegmentStale で stale 判定 → 次回再生成）
+        // undefined フィールドは含めない
         await segRef.set(
           {
             id: segmentId,
@@ -486,12 +492,13 @@ export const generateNoteRoutes = onCall(
             fromPlaceGroupId: from.id,
             toPlaceGroupId: to.id,
             travelMode: segTravelMode,
-            provider: 'google_routes',
+            provider: 'google_routes' as const,
             fromLatitude: from.latitude,
             fromLongitude: from.longitude,
             toLatitude: to.latitude,
             toLongitude: to.longitude,
             status: 'failed' as RouteSegmentStatus,
+            errorMessage,
             generatedAt: admin.firestore.FieldValue.serverTimestamp(),
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
           },

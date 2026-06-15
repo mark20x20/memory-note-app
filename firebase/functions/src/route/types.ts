@@ -53,7 +53,7 @@ export type RouteSegmentStatus = 'generated' | 'failed' | 'stale';
 
 /**
  * 区間別移動手段指定（Phase 12.5H-5.5 mixed route mode）。
- * travelMode に 'transit' を指定しても、generateNoteRoutes 側でスキップされる。
+ * Phase 12.5H-6: transit も有効（walking / driving / transit）。
  */
 export type SegmentTravelModeInput = {
   fromPlaceGroupId: string;
@@ -72,7 +72,7 @@ export type GenerateNoteRoutesInput = {
   /**
    * 区間別移動手段指定（Phase 12.5H-5.5 mixed route mode）。
    * 指定した場合は travelMode を無視して区間ごとの手段を使う。
-   * transit 区間はスキップされる。
+   * Phase 12.5H-6: transit も有効（walking / driving / transit）。
    */
   segmentTravelModes?: SegmentTravelModeInput[];
   /** true にするとキャッシュを無視して再生成。Premium でも1日上限あり */
@@ -181,6 +181,8 @@ export type RouteSegmentDoc = {
    * - 'stale': 座標変更などにより無効化済み（再生成が必要）
    */
   status: RouteSegmentStatus;
+  /** 失敗時のエラーメッセージ（status='failed' のときのみ設定） */
+  errorMessage?: string;
 
   // ── タイムスタンプ ─────────────────────────────────
   generatedAt: Timestamp;

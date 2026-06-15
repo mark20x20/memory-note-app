@@ -14,9 +14,10 @@ const ROUTES_API_ENDPOINT =
 
 // ── travelMode マッピング ─────────────────────────────────────────────────────
 
-const TRAVEL_MODE_MAP: Record<Exclude<PremiumRouteTravelMode, 'transit'>, string> = {
+const TRAVEL_MODE_MAP: Record<PremiumRouteTravelMode, string> = {
   walking: 'WALK',
   driving: 'DRIVE',
+  transit: 'TRANSIT',
 };
 
 // ── 型定義 ────────────────────────────────────────────────────────────────────
@@ -54,12 +55,11 @@ function parseDurationSeconds(duration: unknown): number | undefined {
 /**
  * Google Routes API (v2:computeRoutes) を呼び出して1区間のルートを取得する。
  *
- * Phase 12.5H-5: walking / driving の本実装。
- * transit は未対応（Phase 12.5H-6 で実装予定）。
+ * Phase 12.5H-5: walking / driving 本実装。
+ * Phase 12.5H-6: transit 対応（departureTime=now、encodedPolyline のみ取得）。
  *
  * @param params - APIキー、origin/destination 座標、移動手段
  * @returns encodedPolyline、距離、所要時間などのルート情報
- * @throws transit が指定された場合は Error
  * @throws API キーが空の場合は Error
  * @throws Routes API がエラーを返した場合は Error
  * @throws encodedPolyline が取得できなかった場合は Error
@@ -69,13 +69,6 @@ export async function computeRouteSegment(
 ): Promise<ComputeRouteSegmentResult> {
   const { apiKey, origin, destination, travelMode } = params;
 
-  // transit は未実装
-  if (travelMode === 'transit') {
-    throw new Error(
-      '[computeRouteSegment] transit is not implemented yet. Will be implemented in Phase 12.5H-6.'
-    );
-  }
-
   // API キー検証
   if (!apiKey || apiKey.trim() === '') {
     throw new Error('[computeRouteSegment] GOOGLE_ROUTES_API_KEY is empty');
@@ -83,7 +76,8 @@ export async function computeRouteSegment(
 
   const apiTravelMode = TRAVEL_MODE_MAP[travelMode];
 
-  const requestBody = {
+  // transit は departureTime を現在時刻に設定（指定しないと ZERO_RESULTS になる場合がある）
+  const requestBody: Record<string, unknown> = {
     origin: {
       location: {
         latLng: {
@@ -106,13 +100,22 @@ export async function computeRouteSegment(
     units: 'METRIC',
   };
 
+  if (travelMode === 'transit') {
+    requestBody.departureTime = new Date().toISOString();
+  }
+
+  // transit は routes.description を返さない場合があるため FieldMask に含めない
+  const fieldMask =
+    travelMode === 'transit'
+      ? 'routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline,routes.warnings'
+      : 'routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline,routes.description,routes.warnings';
+
   const response = await fetch(ROUTES_API_ENDPOINT, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'X-Goog-Api-Key': apiKey,
-      'X-Goog-FieldMask':
-        'routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline,routes.description,routes.warnings',
+      'X-Goog-FieldMask': fieldMask,
     },
     body: JSON.stringify(requestBody),
   });
@@ -157,11 +160,19 @@ export async function computeRouteSegment(
     );
   }
 
-  return {
+  const result: ComputeRouteSegmentResult = {
     encodedPolyline,
-    distanceMeters: route.distanceMeters,
-    durationSeconds: parseDurationSeconds(route.duration),
-    routeSummary: route.description,
-    warnings: route.warnings ?? [],
+    warnings: Array.isArray(route.warnings) ? route.warnings : [],
   };
+
+  const distanceMeters = route.distanceMeters;
+  if (distanceMeters !== undefined) result.distanceMeters = distanceMeters;
+
+  const durationSeconds = parseDurationSeconds(route.duration);
+  if (durationSeconds !== undefined) result.durationSeconds = durationSeconds;
+
+  // description は driving/walking のみ返される。transit では undefined になるため条件付き設定。
+  if (route.description !== undefined) result.routeSummary = route.description;
+
+  return result;
 }
