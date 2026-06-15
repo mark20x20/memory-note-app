@@ -199,7 +199,7 @@ export type VisitRouteSegment = {
 /**
  * 区間別移動手段指定（Phase 12.5H-5.5 mixed route mode）。
  * generateNoteRoutes に segmentTravelModes として渡す。
- * transit を指定した場合、Cloud Functions 側でスキップされる。
+ * Phase 12.5H-6: transit も有効（walking / driving / transit）。
  */
 export type SegmentTravelModeInput = {
   fromPlaceGroupId: string;
