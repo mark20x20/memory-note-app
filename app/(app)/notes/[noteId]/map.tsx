@@ -217,9 +217,34 @@ export default function NoteMapScreen() {
   const [groups, setGroups] = useState<PlaceGroupDoc[]>([]);
   const [groupsLoading, setGroupsLoading] = useState(true);
   const unsubRef = useRef<(() => void) | null>(null);
+  /** MapView への ref — animateToRegion で使用 */
+  const mapRef = useRef<MapView>(null);
 
   /** 選択中のPlaceGroup ID（null = 最初のグループ） */
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+
+  /** ピン / タイムライン選択時の共通処理: selectedGroupId を更新し camera を移動 */
+  function selectGroup(group: PlaceGroupDoc) {
+    setSelectedGroupId(group.id);
+    if (
+      mapRef.current &&
+      typeof group.latitude === 'number' &&
+      typeof group.longitude === 'number' &&
+      group.latitude !== 0 &&
+      group.longitude !== 0
+    ) {
+      if (__DEV__) console.log('[map] animateToSelectedGroup', { label: group.label });
+      mapRef.current.animateToRegion(
+        {
+          latitude: group.latitude,
+          longitude: group.longitude,
+          latitudeDelta: 0.008,
+          longitudeDelta: 0.008,
+        },
+        300
+      );
+    }
+  }
 
   const userCanEdit = uid && note ? canEdit(note, uid) : false;
 
@@ -469,6 +494,7 @@ export default function NoteMapScreen() {
 
       {/* ── Map Canvas ── */}
       <MapView
+        ref={mapRef}
         style={{ height: MAP_HEIGHT }}
         initialRegion={initialRegion}
         showsUserLocation={false}
@@ -514,7 +540,7 @@ export default function NoteMapScreen() {
           <Marker
             key={group.id}
             coordinate={{ latitude: group.latitude, longitude: group.longitude }}
-            onPress={() => setSelectedGroupId(group.id)}
+            onPress={() => selectGroup(group)}
           >
             <NumberedMarkerView
               number={idx + 1}
@@ -621,7 +647,7 @@ export default function NoteMapScreen() {
                 <TouchableOpacity
                   key={group.id}
                   style={styles.timelineItem}
-                  onPress={() => setSelectedGroupId(group.id)}
+                  onPress={() => selectGroup(group)}
                   activeOpacity={0.7}
                 >
                   <View style={styles.timelineLeft}>
