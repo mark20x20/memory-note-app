@@ -1,0 +1,245 @@
+// UI-2: OverviewPanel — Edit画面の概要タブ
+// 表示: カバー写真, タイトル入力, noteType切替, 日付表示
+
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  Image,
+  StyleSheet,
+} from 'react-native';
+import { colors } from '@/shared/theme/colors';
+import { borderRadius } from '@/shared/theme/spacing';
+import type { NoteDoc } from '@/core/repositories/noteRepository';
+import type { PhotoDoc } from '@/core/repositories/photoRepository';
+import type { NoteEditDraft } from '@/features/memoryNotes/types/edit';
+
+function formatDate(date: Date): string {
+  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
+}
+
+type OverviewPanelProps = {
+  draft: NoteEditDraft;
+  updateField: <K extends keyof NoteEditDraft>(key: K, value: NoteEditDraft[K]) => void;
+  note: NoteDoc;
+  photos: PhotoDoc[];
+  isBusy: boolean;
+};
+
+export function OverviewPanel({
+  draft,
+  updateField,
+  note,
+  photos,
+  isBusy,
+}: OverviewPanelProps) {
+  const coverPhoto = photos.find((p) => p.downloadURL === note.coverPhotoURL) ?? photos[0] ?? null;
+  const dateStr = note.createdAt?.toDate ? formatDate(note.createdAt.toDate()) : null;
+
+  return (
+    <View style={styles.container}>
+      {/* カバー写真 */}
+      <View style={styles.coverSection}>
+        <Text style={styles.fieldLabel}>カバー写真</Text>
+        {coverPhoto ? (
+          <View style={styles.coverPreview}>
+            <Image
+              source={{ uri: coverPhoto.downloadURL }}
+              style={styles.coverImage}
+              resizeMode="cover"
+            />
+            <Text style={styles.coverHint}>
+              写真タブで変更できます
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.coverPlaceholder}>
+            <Text style={styles.coverPlaceholderEmoji}>📷</Text>
+            <Text style={styles.coverPlaceholderText}>
+              写真タブからカバー写真を設定できます
+            </Text>
+          </View>
+        )}
+      </View>
+
+      {/* タイトル */}
+      <View style={styles.field}>
+        <Text style={styles.fieldLabel}>タイトル</Text>
+        <TextInput
+          style={styles.input}
+          value={draft.title}
+          onChangeText={(v) => updateField('title', v)}
+          placeholder="タイトルを入力"
+          placeholderTextColor={colors.textTertiary}
+          maxLength={100}
+          editable={!isBusy}
+        />
+      </View>
+
+      {/* 日付 */}
+      {dateStr ? (
+        <View style={styles.field}>
+          <Text style={styles.fieldLabel}>日付</Text>
+          <View style={styles.readonlyRow}>
+            <Text style={styles.readonlyText}>📅 {dateStr}</Text>
+          </View>
+        </View>
+      ) : null}
+
+      {/* ノート種別 */}
+      <View style={styles.field}>
+        <Text style={styles.fieldLabel}>ノートの種類</Text>
+        <View style={styles.noteTypeRow}>
+          <TouchableOpacity
+            style={[
+              styles.noteTypeButton,
+              draft.noteType === 'personal' && styles.noteTypeButtonActive,
+            ]}
+            onPress={() => updateField('noteType', 'personal')}
+            disabled={isBusy}
+          >
+            <Text
+              style={[
+                styles.noteTypeButtonText,
+                draft.noteType === 'personal' && styles.noteTypeButtonTextActive,
+              ]}
+            >
+              👤 個人ノート
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.noteTypeButton,
+              draft.noteType === 'shared' && styles.noteTypeButtonActive,
+            ]}
+            onPress={() => updateField('noteType', 'shared')}
+            disabled={isBusy}
+          >
+            <Text
+              style={[
+                styles.noteTypeButtonText,
+                draft.noteType === 'shared' && styles.noteTypeButtonTextActive,
+              ]}
+            >
+              🤝 共有ノート
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* 写真枚数 */}
+      {photos.length > 0 ? (
+        <View style={styles.field}>
+          <Text style={styles.fieldLabel}>写真</Text>
+          <View style={styles.readonlyRow}>
+            <Text style={styles.readonlyText}>📷 {photos.length}枚</Text>
+          </View>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    padding: 20,
+    gap: 20,
+  },
+  field: {
+    gap: 6,
+  },
+  fieldLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  input: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: colors.textPrimary,
+  },
+  coverSection: {
+    gap: 6,
+  },
+  coverPreview: {
+    borderRadius: borderRadius.xl,
+    overflow: 'hidden',
+    gap: 0,
+  },
+  coverImage: {
+    width: '100%',
+    height: 180,
+    borderRadius: borderRadius.xl,
+  },
+  coverHint: {
+    fontSize: 12,
+    color: colors.textTertiary,
+    marginTop: 6,
+    textAlign: 'center',
+  },
+  coverPlaceholder: {
+    height: 100,
+    backgroundColor: colors.surfaceIvory,
+    borderRadius: borderRadius.xl,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  coverPlaceholderEmoji: {
+    fontSize: 28,
+    opacity: 0.35,
+  },
+  coverPlaceholderText: {
+    fontSize: 12,
+    color: colors.textTertiary,
+    textAlign: 'center',
+    paddingHorizontal: 16,
+  },
+  readonlyRow: {
+    backgroundColor: colors.surfaceIvory,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  readonlyText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  noteTypeRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  noteTypeButton: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: borderRadius.md,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+  },
+  noteTypeButtonActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primaryLight,
+  },
+  noteTypeButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.textSecondary,
+  },
+  noteTypeButtonTextActive: {
+    color: colors.primary,
+    fontWeight: '600',
+  },
+});
