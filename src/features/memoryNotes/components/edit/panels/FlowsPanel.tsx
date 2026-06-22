@@ -1,9 +1,6 @@
 // UI-2: FlowsPanel — Edit画面の流れタブ
-// 表示: place_groups をFlowとして一覧表示 (番号・時間・場所名・サムネイル・eventMemo)
-// アクション: 詳細を見る → flows/[placeGroupId], 場所を確認 → places/[placeGroupId]
-// フロー再作成ボタンも含む
+// UI-3A: usePlaceGroups から groups を props で受け取るように変更（二重購読解消）
 
-import { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -16,7 +13,6 @@ import {
 import { router } from 'expo-router';
 import { colors } from '@/shared/theme/colors';
 import { borderRadius } from '@/shared/theme/spacing';
-import { placeGroupRepository } from '@/core/repositories/placeGroupRepository';
 import {
   enrichNotePlacesCallable,
   GROUPING_PRESETS,
@@ -40,16 +36,9 @@ function formatStartTime(group: PlaceGroupDoc): string | null {
 
 function getCategoryLabel(category: string): string {
   const map: Record<string, string> = {
-    restaurant: 'レストラン',
-    cafe: 'カフェ',
-    tourist_attraction: '観光地',
-    station: '駅',
-    hotel: 'ホテル',
-    shopping: 'ショッピング',
-    park: '公園',
-    museum: '美術館・博物館',
-    area: 'エリア',
-    unknown: 'その他',
+    restaurant: 'レストラン', cafe: 'カフェ', tourist_attraction: '観光地',
+    station: '駅', hotel: 'ホテル', shopping: 'ショッピング',
+    park: '公園', museum: '美術館・博物館', area: 'エリア', unknown: 'その他',
   };
   return map[category] ?? category;
 }
@@ -58,28 +47,12 @@ function getCategoryLabel(category: string): string {
 
 type FlowsPanelProps = {
   noteId: string;
+  groups: PlaceGroupDoc[];
+  isLoadingGroups: boolean;
   isBusy: boolean;
 };
 
-export function FlowsPanel({ noteId, isBusy }: FlowsPanelProps) {
-  const [groups, setGroups] = useState<PlaceGroupDoc[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [recreatingFlow, setRecreatingFlow] = useState(false);
-
-  useEffect(() => {
-    if (!noteId) return;
-    setIsLoading(true);
-    const unsub = placeGroupRepository.subscribePlaceGroupsByNoteId(
-      noteId,
-      (g) => {
-        setGroups(g);
-        setIsLoading(false);
-      },
-      () => setIsLoading(false)
-    );
-    return unsub;
-  }, [noteId]);
-
+export function FlowsPanel({ noteId, groups, isLoadingGroups, isBusy }: FlowsPanelProps) {
   async function handleRecreateFlow() {
     Alert.alert(
       'この日の流れを再作成',
@@ -89,7 +62,6 @@ export function FlowsPanel({ noteId, isBusy }: FlowsPanelProps) {
         {
           text: '再作成',
           onPress: async () => {
-            setRecreatingFlow(true);
             try {
               await enrichNotePlacesCallable({
                 noteId,
@@ -103,8 +75,6 @@ export function FlowsPanel({ noteId, isBusy }: FlowsPanelProps) {
                   ? String((err as { message: unknown }).message)
                   : '再作成に失敗しました';
               Alert.alert('エラー', msg);
-            } finally {
-              setRecreatingFlow(false);
             }
           },
         },
@@ -112,7 +82,7 @@ export function FlowsPanel({ noteId, isBusy }: FlowsPanelProps) {
     );
   }
 
-  if (isLoading) {
+  if (isLoadingGroups) {
     return (
       <View style={styles.centered}>
         <ActivityIndicator color={colors.mapAccent} />
@@ -123,7 +93,6 @@ export function FlowsPanel({ noteId, isBusy }: FlowsPanelProps) {
 
   return (
     <View style={styles.container}>
-      {/* Flow一覧 */}
       {groups.length === 0 ? (
         <View style={styles.emptyState}>
           <Text style={styles.emptyEmoji}>🗓️</Text>
@@ -140,14 +109,11 @@ export function FlowsPanel({ noteId, isBusy }: FlowsPanelProps) {
 
           return (
             <View key={group.id} style={styles.flowCard}>
-              {/* ヘッダー行 */}
               <View style={styles.flowHeader}>
                 <View style={styles.flowNumBadge}>
                   <Text style={styles.flowNum}>{idx + 1}</Text>
                 </View>
-                {timeStr ? (
-                  <Text style={styles.flowTime}>{timeStr}</Text>
-                ) : null}
+                {timeStr ? <Text style={styles.flowTime}>{timeStr}</Text> : null}
                 <View style={[
                   styles.confirmedBadge,
                   group.userConfirmed && styles.confirmedBadgeActive,
@@ -161,20 +127,13 @@ export function FlowsPanel({ noteId, isBusy }: FlowsPanelProps) {
                 </View>
               </View>
 
-              {/* 場所名 + カテゴリ */}
               <Text style={styles.flowLabel}>{group.label}</Text>
               <Text style={styles.flowCategory}>{getCategoryLabel(group.category)}</Text>
 
-              {/* 写真サムネイル */}
               {thumbURLs.length > 0 ? (
                 <View style={styles.thumbRow}>
                   {thumbURLs.map((url, ti) => (
-                    <Image
-                      key={ti}
-                      source={{ uri: url }}
-                      style={styles.thumb}
-                      resizeMode="cover"
-                    />
+                    <Image key={ti} source={{ uri: url }} style={styles.thumb} resizeMode="cover" />
                   ))}
                   {group.photoCount > 3 ? (
                     <View style={styles.thumbMore}>
@@ -184,32 +143,22 @@ export function FlowsPanel({ noteId, isBusy }: FlowsPanelProps) {
                 </View>
               ) : null}
 
-              {/* eventMemo */}
               {group.eventMemo ? (
-                <Text style={styles.eventMemo} numberOfLines={2}>
-                  {group.eventMemo}
-                </Text>
+                <Text style={styles.eventMemo} numberOfLines={2}>{group.eventMemo}</Text>
               ) : null}
 
-              {/* アクションボタン */}
               <View style={styles.actionRow}>
                 <TouchableOpacity
                   style={styles.actionButton}
-                  onPress={() =>
-                    router.push(`/(app)/notes/${noteId}/flows/${group.id}` as any)
-                  }
+                  onPress={() => router.push(`/(app)/notes/${noteId}/flows/${group.id}` as any)}
                 >
                   <Text style={styles.actionButtonText}>詳細を見る</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.actionButton, styles.actionButtonAccent]}
-                  onPress={() =>
-                    router.push(`/(app)/notes/${noteId}/places/${group.id}` as any)
-                  }
+                  onPress={() => router.push(`/(app)/notes/${noteId}/places/${group.id}` as any)}
                 >
-                  <Text style={[styles.actionButtonText, styles.actionButtonTextAccent]}>
-                    場所を確認
-                  </Text>
+                  <Text style={[styles.actionButtonText, styles.actionButtonTextAccent]}>場所を確認</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -217,7 +166,6 @@ export function FlowsPanel({ noteId, isBusy }: FlowsPanelProps) {
         })
       )}
 
-      {/* フロー設定 / 再作成 */}
       <View style={styles.recreateSection}>
         <Text style={styles.recreateTitle}>フロー管理</Text>
         <View style={styles.recreateButtonRow}>
@@ -229,15 +177,11 @@ export function FlowsPanel({ noteId, isBusy }: FlowsPanelProps) {
             <Text style={styles.recreateButtonText}>フロー分割設定</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.recreateButton, recreatingFlow && styles.recreateButtonDisabled]}
+            style={styles.recreateButton}
             onPress={handleRecreateFlow}
-            disabled={isBusy || recreatingFlow}
+            disabled={isBusy}
           >
-            {recreatingFlow ? (
-              <ActivityIndicator size="small" color={colors.mapAccent} />
-            ) : (
-              <Text style={styles.recreateButtonText}>この日の流れを再作成</Text>
-            )}
+            <Text style={styles.recreateButtonText}>この日の流れを再作成</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -246,191 +190,58 @@ export function FlowsPanel({ noteId, isBusy }: FlowsPanelProps) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    padding: 16,
-    gap: 12,
-  },
-  centered: {
-    alignItems: 'center',
-    paddingVertical: 48,
-    gap: 8,
-  },
-  loadingText: {
-    fontSize: 13,
-    color: colors.textTertiary,
-  },
-  emptyState: {
-    alignItems: 'center',
-    paddingVertical: 32,
-    paddingHorizontal: 24,
-    gap: 8,
-  },
-  emptyEmoji: {
-    fontSize: 36,
-    opacity: 0.35,
-    marginBottom: 4,
-  },
-  emptyTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.textSecondary,
-  },
-  emptyDesc: {
-    fontSize: 13,
-    color: colors.textTertiary,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  // Flow card
+  container: { padding: 16, gap: 12 },
+  centered: { alignItems: 'center', paddingVertical: 48, gap: 8 },
+  loadingText: { fontSize: 13, color: colors.textTertiary },
+  emptyState: { alignItems: 'center', paddingVertical: 32, paddingHorizontal: 24, gap: 8 },
+  emptyEmoji: { fontSize: 36, opacity: 0.35, marginBottom: 4 },
+  emptyTitle: { fontSize: 15, fontWeight: '600', color: colors.textSecondary },
+  emptyDesc: { fontSize: 13, color: colors.textTertiary, textAlign: 'center', lineHeight: 20 },
   flowCard: {
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 14,
-    gap: 6,
+    backgroundColor: colors.surface, borderRadius: borderRadius.lg,
+    borderWidth: 1, borderColor: colors.border, padding: 14, gap: 6,
   },
-  flowHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
+  flowHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   flowNumBadge: {
-    width: 24,
-    height: 24,
-    borderRadius: borderRadius.full,
-    backgroundColor: colors.mapAccent,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 24, height: 24, borderRadius: borderRadius.full,
+    backgroundColor: colors.mapAccent, alignItems: 'center', justifyContent: 'center',
   },
-  flowNum: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.textInverse,
-  },
-  flowTime: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.mapAccent,
-    flex: 1,
-  },
+  flowNum: { fontSize: 11, fontWeight: '700', color: colors.textInverse },
+  flowTime: { fontSize: 13, fontWeight: '600', color: colors.mapAccent, flex: 1 },
   confirmedBadge: {
-    borderRadius: borderRadius.full,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    backgroundColor: colors.surfaceIvory,
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderRadius: borderRadius.full, paddingHorizontal: 8, paddingVertical: 2,
+    backgroundColor: colors.surfaceIvory, borderWidth: 1, borderColor: colors.border,
   },
-  confirmedBadgeActive: {
-    backgroundColor: '#E6F4F0',
-    borderColor: colors.success,
-  },
-  confirmedBadgeText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: colors.textTertiary,
-  },
-  confirmedBadgeTextActive: {
-    color: colors.success,
-  },
-  flowLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.textPrimary,
-    letterSpacing: -0.2,
-  },
-  flowCategory: {
-    fontSize: 12,
-    color: colors.textSecondary,
-  },
-  thumbRow: {
-    flexDirection: 'row',
-    gap: 6,
-    marginTop: 4,
-  },
-  thumb: {
-    width: 52,
-    height: 52,
-    borderRadius: borderRadius.sm,
-    backgroundColor: colors.border,
-  },
+  confirmedBadgeActive: { backgroundColor: '#E6F4F0', borderColor: colors.success },
+  confirmedBadgeText: { fontSize: 10, fontWeight: '600', color: colors.textTertiary },
+  confirmedBadgeTextActive: { color: colors.success },
+  flowLabel: { fontSize: 16, fontWeight: '600', color: colors.textPrimary, letterSpacing: -0.2 },
+  flowCategory: { fontSize: 12, color: colors.textSecondary },
+  thumbRow: { flexDirection: 'row', gap: 6, marginTop: 4 },
+  thumb: { width: 52, height: 52, borderRadius: borderRadius.sm, backgroundColor: colors.border },
   thumbMore: {
-    width: 52,
-    height: 52,
-    borderRadius: borderRadius.sm,
-    backgroundColor: colors.gray200,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 52, height: 52, borderRadius: borderRadius.sm,
+    backgroundColor: colors.gray200, alignItems: 'center', justifyContent: 'center',
   },
-  thumbMoreText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.textSecondary,
-  },
-  eventMemo: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    fontStyle: 'italic',
-    lineHeight: 18,
-  },
-  actionRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 4,
-  },
+  thumbMoreText: { fontSize: 12, fontWeight: '600', color: colors.textSecondary },
+  eventMemo: { fontSize: 13, color: colors.textSecondary, fontStyle: 'italic', lineHeight: 18 },
+  actionRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
   actionButton: {
-    flex: 1,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-    borderRadius: borderRadius.md,
-    paddingVertical: 7,
-    alignItems: 'center',
+    flex: 1, borderWidth: 1.5, borderColor: colors.border,
+    borderRadius: borderRadius.md, paddingVertical: 7, alignItems: 'center',
   },
-  actionButtonAccent: {
-    borderColor: colors.mapAccent,
-  },
-  actionButtonText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.textSecondary,
-  },
-  actionButtonTextAccent: {
-    color: colors.mapAccent,
-  },
-  // Recreate section
+  actionButtonAccent: { borderColor: colors.mapAccent },
+  actionButtonText: { fontSize: 12, fontWeight: '600', color: colors.textSecondary },
+  actionButtonTextAccent: { color: colors.mapAccent },
   recreateSection: {
-    backgroundColor: colors.surfaceIvory,
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 14,
-    gap: 10,
-    marginTop: 4,
+    backgroundColor: colors.surfaceIvory, borderRadius: borderRadius.lg,
+    borderWidth: 1, borderColor: colors.border, padding: 14, gap: 10, marginTop: 4,
   },
-  recreateTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.textSecondary,
-  },
-  recreateButtonRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
+  recreateTitle: { fontSize: 13, fontWeight: '600', color: colors.textSecondary },
+  recreateButtonRow: { flexDirection: 'row', gap: 8 },
   recreateButton: {
-    flex: 1,
-    borderWidth: 1.5,
-    borderColor: colors.mapAccent,
-    borderRadius: borderRadius.md,
-    paddingVertical: 9,
-    alignItems: 'center',
+    flex: 1, borderWidth: 1.5, borderColor: colors.mapAccent,
+    borderRadius: borderRadius.md, paddingVertical: 9, alignItems: 'center',
   },
-  recreateButtonDisabled: {
-    opacity: 0.6,
-  },
-  recreateButtonText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.mapAccent,
-  },
+  recreateButtonText: { fontSize: 12, fontWeight: '600', color: colors.mapAccent },
 });

@@ -3,6 +3,7 @@
 // Phase 12.5G-4: フロー管理セクションを追加。
 // UI-1: 5タブシェル化 (Overview / Photos / Flows / Places / Memo)
 // UI-2: タブに実データを接続。useNoteEditDraft でdraft stateを一元管理。
+// UI-3A: usePlaceGroups を導入。FlowsPanel / PlacesPanel の二重購読を解消。
 
 import { useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -25,6 +26,7 @@ import { useAuth } from '@/core/auth/AuthContext';
 import { useNoteEditDraft } from '@/features/memoryNotes/hooks/useNoteEditDraft';
 import { useNotePhotos } from '@/features/photos/hooks/useNotePhotos';
 import { useDeleteNote } from '@/features/memoryNotes/hooks/useDeleteNote';
+import { usePlaceGroups } from '@/features/placeIntelligence/hooks/usePlaceGroups';
 import { canEdit, canDelete } from '@/features/memoryNotes/utils/permissions';
 import type { EditTabKey } from '@/features/memoryNotes/types/edit';
 import { OverviewPanel } from '@/features/memoryNotes/components/edit/panels/OverviewPanel';
@@ -61,6 +63,7 @@ export default function NoteEditScreen() {
 
   const { photos, isLoading: photosLoading } = useNotePhotos(noteId ?? null);
   const { deleteNote, isDeleting, error: deleteError } = useDeleteNote();
+  const { groups: placeGroups, isLoading: groupsLoading } = usePlaceGroups(noteId ?? null);
 
   // タブ state
   const [activeTab, setActiveTab] = useState<EditTabKey>('overview');
@@ -215,11 +218,21 @@ export default function NoteEditScreen() {
           )}
 
           {activeTab === 'flows' && (
-            <FlowsPanel noteId={noteId ?? ''} isBusy={isBusy} />
+            <FlowsPanel
+              noteId={noteId ?? ''}
+              groups={placeGroups}
+              isLoadingGroups={groupsLoading}
+              isBusy={isBusy}
+            />
           )}
 
           {activeTab === 'places' && (
-            <PlacesPanel noteId={noteId ?? ''} userCanEdit={!!userCanEdit} />
+            <PlacesPanel
+              noteId={noteId ?? ''}
+              groups={placeGroups}
+              isLoadingGroups={groupsLoading}
+              userCanEdit={!!userCanEdit}
+            />
           )}
 
           {activeTab === 'memo' && (

@@ -1,8 +1,6 @@
 // UI-2: PlacesPanel — Edit画面の場所タブ
-// 表示: place_groups 一覧 (選択中場所名, category, confirmed状態, photo count)
-// アクション: 候補確認 → places/[placeGroupId], 手動修正 → places/manual
+// UI-3A: usePlaceGroups から groups を props で受け取るように変更（二重購読解消）
 
-import { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,51 +11,28 @@ import {
 import { router } from 'expo-router';
 import { colors } from '@/shared/theme/colors';
 import { borderRadius } from '@/shared/theme/spacing';
-import { placeGroupRepository } from '@/core/repositories/placeGroupRepository';
 import type { PlaceGroupDoc } from '@/features/map/types';
 
 function getCategoryLabel(category: string): string {
   const map: Record<string, string> = {
-    restaurant: 'レストラン',
-    cafe: 'カフェ',
-    tourist_attraction: '観光地',
-    station: '駅',
-    hotel: 'ホテル',
-    shopping: 'ショッピング',
-    park: '公園',
-    museum: '美術館・博物館',
-    area: 'エリア',
-    unknown: 'その他',
+    restaurant: 'レストラン', cafe: 'カフェ', tourist_attraction: '観光地',
+    station: '駅', hotel: 'ホテル', shopping: 'ショッピング',
+    park: '公園', museum: '美術館・博物館', area: 'エリア', unknown: 'その他',
   };
   return map[category] ?? category;
 }
 
 type PlacesPanelProps = {
   noteId: string;
+  groups: PlaceGroupDoc[];
+  isLoadingGroups: boolean;
   userCanEdit: boolean;
 };
 
-export function PlacesPanel({ noteId, userCanEdit }: PlacesPanelProps) {
-  const [groups, setGroups] = useState<PlaceGroupDoc[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    if (!noteId) return;
-    setIsLoading(true);
-    const unsub = placeGroupRepository.subscribePlaceGroupsByNoteId(
-      noteId,
-      (g) => {
-        setGroups(g);
-        setIsLoading(false);
-      },
-      () => setIsLoading(false)
-    );
-    return unsub;
-  }, [noteId]);
-
+export function PlacesPanel({ noteId, groups, isLoadingGroups, userCanEdit }: PlacesPanelProps) {
   const confirmedCount = groups.filter((g) => g.userConfirmed).length;
 
-  if (isLoading) {
+  if (isLoadingGroups) {
     return (
       <View style={styles.centered}>
         <ActivityIndicator color={colors.mapAccent} />
@@ -80,7 +55,6 @@ export function PlacesPanel({ noteId, userCanEdit }: PlacesPanelProps) {
 
   return (
     <View style={styles.container}>
-      {/* サマリー */}
       <View style={styles.summaryRow}>
         <View style={styles.summaryItem}>
           <Text style={styles.summaryValue}>{groups.length}</Text>
@@ -102,7 +76,6 @@ export function PlacesPanel({ noteId, userCanEdit }: PlacesPanelProps) {
         </View>
       </View>
 
-      {/* 場所カード一覧 */}
       {groups.map((group, idx) => (
         <View
           key={group.id}
@@ -132,23 +105,18 @@ export function PlacesPanel({ noteId, userCanEdit }: PlacesPanelProps) {
             <Text style={styles.placeMeta}>写真 {group.photoCount}枚</Text>
           ) : null}
 
-          {/* アクションボタン (editor/owner のみ) */}
           {userCanEdit ? (
             <View style={styles.actionRow}>
               <TouchableOpacity
                 style={[styles.actionButton, styles.actionButtonPrimary]}
-                onPress={() =>
-                  router.push(`/(app)/notes/${noteId}/places/${group.id}` as any)
-                }
+                onPress={() => router.push(`/(app)/notes/${noteId}/places/${group.id}` as any)}
               >
                 <Text style={styles.actionButtonPrimaryText}>候補確認</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.actionButton}
                 onPress={() =>
-                  router.push(
-                    `/(app)/notes/${noteId}/places/manual?placeGroupId=${group.id}` as any
-                  )
+                  router.push(`/(app)/notes/${noteId}/places/manual?placeGroupId=${group.id}` as any)
                 }
               >
                 <Text style={styles.actionButtonText}>手動修正</Text>
@@ -162,168 +130,49 @@ export function PlacesPanel({ noteId, userCanEdit }: PlacesPanelProps) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    padding: 16,
-    gap: 10,
-  },
-  centered: {
-    alignItems: 'center',
-    paddingVertical: 48,
-    gap: 8,
-  },
-  loadingText: {
-    fontSize: 13,
-    color: colors.textTertiary,
-  },
-  emptyState: {
-    alignItems: 'center',
-    paddingVertical: 48,
-    paddingHorizontal: 32,
-    gap: 8,
-  },
-  emptyEmoji: {
-    fontSize: 36,
-    opacity: 0.35,
-    marginBottom: 4,
-  },
-  emptyTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.textSecondary,
-  },
-  emptyDesc: {
-    fontSize: 13,
-    color: colors.textTertiary,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  // Summary
+  container: { padding: 16, gap: 10 },
+  centered: { alignItems: 'center', paddingVertical: 48, gap: 8 },
+  loadingText: { fontSize: 13, color: colors.textTertiary },
+  emptyState: { alignItems: 'center', paddingVertical: 48, paddingHorizontal: 32, gap: 8 },
+  emptyEmoji: { fontSize: 36, opacity: 0.35, marginBottom: 4 },
+  emptyTitle: { fontSize: 15, fontWeight: '600', color: colors.textSecondary },
+  emptyDesc: { fontSize: 13, color: colors.textTertiary, textAlign: 'center', lineHeight: 20 },
   summaryRow: {
-    flexDirection: 'row',
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 14,
+    flexDirection: 'row', backgroundColor: colors.surface,
+    borderRadius: borderRadius.lg, borderWidth: 1, borderColor: colors.border, padding: 14,
   },
-  summaryItem: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 2,
-  },
-  summaryDivider: {
-    width: 1,
-    backgroundColor: colors.border,
-  },
-  summaryValue: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  summaryValueConfirmed: {
-    color: colors.success,
-  },
-  summaryValuePending: {
-    color: colors.warning,
-  },
-  summaryLabel: {
-    fontSize: 11,
-    color: colors.textTertiary,
-  },
-  // Place card
+  summaryItem: { flex: 1, alignItems: 'center', gap: 2 },
+  summaryDivider: { width: 1, backgroundColor: colors.border },
+  summaryValue: { fontSize: 20, fontWeight: '700', color: colors.textPrimary },
+  summaryValueConfirmed: { color: colors.success },
+  summaryValuePending: { color: colors.warning },
+  summaryLabel: { fontSize: 11, color: colors.textTertiary },
   placeCard: {
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 14,
-    gap: 4,
+    backgroundColor: colors.surface, borderRadius: borderRadius.lg,
+    borderWidth: 1, borderColor: colors.border, padding: 14, gap: 4,
   },
-  placeCardConfirmed: {
-    borderColor: colors.success + '66',
-    backgroundColor: '#F0FBF7',
-  },
-  placeHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 4,
-  },
+  placeCardConfirmed: { borderColor: colors.success + '66', backgroundColor: '#F0FBF7' },
+  placeHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
   placeNumBadge: {
-    width: 22,
-    height: 22,
-    borderRadius: borderRadius.full,
-    backgroundColor: colors.mapAccent,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 22, height: 22, borderRadius: borderRadius.full,
+    backgroundColor: colors.mapAccent, alignItems: 'center', justifyContent: 'center',
   },
-  placeNum: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: colors.textInverse,
-  },
-  statusBadge: {
-    borderRadius: borderRadius.full,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderWidth: 1,
-  },
-  statusBadgeConfirmed: {
-    backgroundColor: '#E6F4F0',
-    borderColor: colors.success,
-  },
-  statusBadgePending: {
-    backgroundColor: colors.surfaceIvory,
-    borderColor: colors.warning,
-  },
-  statusBadgeText: {
-    fontSize: 10,
-    fontWeight: '600',
-  },
-  statusBadgeTextConfirmed: {
-    color: colors.success,
-  },
-  statusBadgeTextPending: {
-    color: colors.warning,
-  },
-  placeLabel: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.textPrimary,
-  },
-  placeCategory: {
-    fontSize: 12,
-    color: colors.textSecondary,
-  },
-  placeMeta: {
-    fontSize: 12,
-    color: colors.textTertiary,
-  },
-  actionRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 6,
-  },
+  placeNum: { fontSize: 10, fontWeight: '700', color: colors.textInverse },
+  statusBadge: { borderRadius: borderRadius.full, paddingHorizontal: 8, paddingVertical: 2, borderWidth: 1 },
+  statusBadgeConfirmed: { backgroundColor: '#E6F4F0', borderColor: colors.success },
+  statusBadgePending: { backgroundColor: colors.surfaceIvory, borderColor: colors.warning },
+  statusBadgeText: { fontSize: 10, fontWeight: '600' },
+  statusBadgeTextConfirmed: { color: colors.success },
+  statusBadgeTextPending: { color: colors.warning },
+  placeLabel: { fontSize: 15, fontWeight: '600', color: colors.textPrimary },
+  placeCategory: { fontSize: 12, color: colors.textSecondary },
+  placeMeta: { fontSize: 12, color: colors.textTertiary },
+  actionRow: { flexDirection: 'row', gap: 8, marginTop: 6 },
   actionButton: {
-    flex: 1,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-    borderRadius: borderRadius.md,
-    paddingVertical: 7,
-    alignItems: 'center',
+    flex: 1, borderWidth: 1.5, borderColor: colors.border,
+    borderRadius: borderRadius.md, paddingVertical: 7, alignItems: 'center',
   },
-  actionButtonPrimary: {
-    borderColor: colors.mapAccent,
-    backgroundColor: colors.mapAccentLight,
-  },
-  actionButtonText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.textSecondary,
-  },
-  actionButtonPrimaryText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.mapAccent,
-  },
+  actionButtonPrimary: { borderColor: colors.mapAccent, backgroundColor: colors.mapAccentLight },
+  actionButtonText: { fontSize: 12, fontWeight: '600', color: colors.textSecondary },
+  actionButtonPrimaryText: { fontSize: 12, fontWeight: '600', color: colors.mapAccent },
 });
