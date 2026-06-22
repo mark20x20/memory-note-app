@@ -6,3 +6,5 @@ export { EmptyState } from './EmptyState';
 export { ErrorState } from './ErrorState';
 export { ScreenHeader } from './ScreenHeader';
 export { Card } from './Card';
+export { EditTabBar } from './EditTabBar';
+export { StickyBottomBar } from './StickyBottomBar';

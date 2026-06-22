@@ -57,4 +57,37 @@ export const typography = StyleSheet.create({
     fontWeight: '600',
     lineHeight: 24,
   },
+  // UI-1 spec variants
+  display: {
+    fontSize: 28,
+    fontWeight: '800',
+    lineHeight: 36,
+    color: colors.textPrimary,
+    letterSpacing: -0.5,
+  },
+  screenTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    lineHeight: 32,
+    color: colors.textPrimary,
+    letterSpacing: -0.3,
+  },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    lineHeight: 26,
+    color: colors.textPrimary,
+  },
+  bodyMd: {
+    fontSize: 15,
+    fontWeight: '400',
+    lineHeight: 24,
+    color: colors.textPrimary,
+  },
+  micro: {
+    fontSize: 11,
+    fontWeight: '400',
+    lineHeight: 16,
+    color: colors.textTertiary,
+  },
 });
