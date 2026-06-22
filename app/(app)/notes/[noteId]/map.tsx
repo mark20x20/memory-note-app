@@ -2,18 +2,9 @@
 // Phase 12.5H-1: Route Plan Mode — ルートモード選択UI
 // Phase 12.5H-5: Walking / Driving 実ルート生成・表示
 // Phase 12.5H-7A: Premium / Quota — Firestore entitlement チェック本実装
+// UI-4: Memory-led Map UX — selected place card / photo strip / route chip reorder / __DEV__ log guard
 //
 // Route: /(app)/notes/[noteId]/map
-//
-// PlaceGroup を地図に表示する。
-// - latitude/longitude がある PlaceGroup を対象
-// - 番号付き Marker（#1, #2, ...）
-// - 下部に PlaceGroup 横スクロールカード
-// - 確認済み / 要確認 バッジ
-// - 簡易旅順プレビュー
-// - 空状態
-// - owner/editor: 候補確認・変更可 / viewer: 確認済みのみ詳細遷移可
-// - walking / driving ルート生成（Premium: Firestore entitlement チェック済み）
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -23,15 +14,17 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  Dimensions,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MapView, { Marker, Polyline, type Region } from 'react-native-maps';
 import { router, useLocalSearchParams } from 'expo-router';
 import { ScreenHeader } from '@/shared/components/ui';
 import { colors } from '@/shared/theme/colors';
+import { borderRadius } from '@/shared/theme/spacing';
 import { useAuth } from '@/core/auth/AuthContext';
 import { useNoteDetail } from '@/features/memoryNotes/hooks/useNoteDetail';
+import { useNotePhotos } from '@/features/photos/hooks/useNotePhotos';
 import { placeGroupRepository } from '@/core/repositories/placeGroupRepository';
 import { canEdit } from '@/features/memoryNotes/utils/permissions';
 import type {
@@ -58,16 +51,12 @@ import { usePremiumStatus } from '@/features/map/hooks/usePremiumStatus';
 
 // ── 定数 ────────────────────────────────────────────────────────────────────
 
-const SCREEN_HEIGHT = Dimensions.get('window').height;
-const MAP_HEIGHT = SCREEN_HEIGHT * 0.52;
+/** スペック推奨: 300〜380px。memory-led map に適したサイズ。 */
+const MAP_HEIGHT = 340;
 const DEFAULT_DELTA = 0.01;
 
 // ── ヘルパー ─────────────────────────────────────────────────────────────────
 
-/**
- * PlaceGroupDoc の startAt（Firestore Timestamp）を "HH:MM" 形式に変換する。
- * startAt がない場合は null を返す。
- */
 function formatStartTime(group: PlaceGroupDoc): string | null {
   const sa = group.startAt;
   if (!sa) return null;
@@ -83,28 +72,11 @@ function formatStartTime(group: PlaceGroupDoc): string | null {
 
 function getCategoryLabel(category: string): string {
   const map: Record<string, string> = {
-    restaurant: 'レストラン',
-    cafe: 'カフェ',
-    tourist_attraction: '観光地',
-    station: '駅',
-    hotel: 'ホテル',
-    shopping: 'ショッピング',
-    park: '公園',
-    museum: '美術館・博物館',
-    area: 'エリア',
-    unknown: 'その他',
+    restaurant: 'レストラン', cafe: 'カフェ', tourist_attraction: '観光地',
+    station: '駅', hotel: 'ホテル', shopping: 'ショッピング',
+    park: '公園', museum: '美術館・博物館', area: 'エリア', unknown: 'その他',
   };
   return map[category] ?? category;
-}
-
-function getStatusBadge(group: PlaceGroupDoc): { label: string; color: string } {
-  if (group.userConfirmed) {
-    return { label: '確認済み', color: colors.success };
-  }
-  if (group.confidence >= 0.6) {
-    return { label: '要確認', color: colors.warning };
-  }
-  return { label: '要確認', color: colors.error };
 }
 
 /** latitude / longitude がある PlaceGroup のみを返す */
@@ -116,18 +88,9 @@ function getGroupsWithLocation(groups: PlaceGroupDoc[]): PlaceGroupDoc[] {
 
 // ── Phase 12.5H-5.5: Mixed Route Mode ────────────────────────────────────────
 
-/**
- * loadRouteSegments に渡す有効なモード。
- * - 'walking' / 'driving' / 'transit': 全体モード（getNoteRouteSegments に travelMode を渡す）
- * - 'mixed': 区間別モード（getNoteRouteSegments に travelMode を渡さず全件取得）
- * 'straight' / 'premium' / routeMode などを直接渡さないこと。
- */
 type LoadRouteEffectiveMode = PremiumRouteTravelMode | 'mixed';
-
-/** 区間別移動手段エントリ（SegmentTravelModeInput と同型、UI 内部で使用） */
 type SegmentModeEntry = SegmentTravelModeInput;
 
-/** segmentTravelModes 配列から指定区間の移動手段を取得する */
 function getSegmentMode(
   modes: SegmentModeEntry[],
   fromId: string,
@@ -140,7 +103,6 @@ function getSegmentMode(
   );
 }
 
-/** 複数地点を包含する Region を計算する */
 function calcRegionForGroups(groups: PlaceGroupDoc[]): Region {
   if (groups.length === 0) {
     return { latitude: 35.6812, longitude: 139.7671, latitudeDelta: 0.1, longitudeDelta: 0.1 };
@@ -169,94 +131,77 @@ function calcRegionForGroups(groups: PlaceGroupDoc[]): Region {
   };
 }
 
-// ── カスタムマーカー ──────────────────────────────────────────────────────────
+// ── 番号付きマーカー ──────────────────────────────────────────────────────────
 
 type NumberedMarkerProps = {
   number: number;
   confirmed: boolean;
+  /** 選択中のピン — 強調表示 */
+  selected?: boolean;
 };
 
-function NumberedMarkerView({ number, confirmed }: NumberedMarkerProps) {
+function NumberedMarkerView({ number, confirmed, selected = false }: NumberedMarkerProps) {
+  const w = selected ? 42 : 36;
+  const h = selected ? 30 : 26;
+  const stemH = selected ? 7 : 6;
+  const filled = confirmed || selected;
   return (
     <View style={markerStyles.wrapper}>
       <View
         style={[
           markerStyles.badge,
-          confirmed ? markerStyles.badgeConfirmed : markerStyles.badgeUnconfirmed,
+          { width: w, height: h, borderRadius: selected ? 10 : 8 },
+          filled ? markerStyles.badgeFilled : markerStyles.badgeOutline,
+          selected && markerStyles.badgeSelectedShadow,
         ]}
       >
-        <Text
-          style={[
-            markerStyles.badgeText,
-            confirmed ? markerStyles.badgeTextConfirmed : markerStyles.badgeTextUnconfirmed,
-          ]}
-        >
+        <Text style={[markerStyles.badgeText, filled ? markerStyles.badgeTextFilled : markerStyles.badgeTextOutline]}>
           #{number}
         </Text>
       </View>
       <View
         style={[
           markerStyles.stem,
-          confirmed ? markerStyles.stemConfirmed : markerStyles.stemUnconfirmed,
+          { borderTopWidth: stemH, borderLeftWidth: stemH / 2, borderRightWidth: stemH / 2 },
+          markerStyles.stemTeal,
         ]}
       />
     </View>
   );
 }
 
-const BADGE_W = 36;
-const BADGE_H = 26;
-const STEM_H = 6;
-
 const markerStyles = StyleSheet.create({
-  wrapper: {
-    alignItems: 'center',
-  },
+  wrapper: { alignItems: 'center' },
   badge: {
-    width: BADGE_W,
-    height: BADGE_H,
-    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
+    shadowOpacity: 0.2,
     shadowRadius: 3,
     elevation: 4,
   },
-  badgeConfirmed: {
-    backgroundColor: colors.mapAccent,
-  },
-  badgeUnconfirmed: {
+  badgeFilled: { backgroundColor: colors.mapAccent },
+  badgeOutline: {
     backgroundColor: colors.white,
     borderWidth: 1.5,
     borderColor: colors.mapAccent,
   },
-  badgeText: {
-    fontSize: 11,
-    fontWeight: '700',
+  badgeSelectedShadow: {
+    shadowOpacity: 0.35,
+    shadowRadius: 5,
+    elevation: 6,
   },
-  badgeTextConfirmed: {
-    color: colors.white,
-  },
-  badgeTextUnconfirmed: {
-    color: colors.mapAccent,
-  },
+  badgeText: { fontSize: 11, fontWeight: '700' },
+  badgeTextFilled: { color: colors.white },
+  badgeTextOutline: { color: colors.mapAccent },
   stem: {
     width: 0,
     height: 0,
-    borderLeftWidth: STEM_H / 2,
-    borderRightWidth: STEM_H / 2,
-    borderTopWidth: STEM_H,
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
   },
-  stemConfirmed: {
-    borderTopColor: colors.mapAccent,
-  },
-  stemUnconfirmed: {
-    borderTopColor: colors.mapAccent,
-  },
+  stemTeal: { borderTopColor: colors.mapAccent },
 });
 
 // ── メイン画面 ────────────────────────────────────────────────────────────────
@@ -267,21 +212,23 @@ export default function NoteMapScreen() {
   const uid = authState.status === 'signedIn' ? authState.user.uid : null;
 
   const { note, isLoading: noteLoading } = useNoteDetail(noteId ?? null);
+  const { photos: allPhotos } = useNotePhotos(noteId ?? null);
+
   const [groups, setGroups] = useState<PlaceGroupDoc[]>([]);
   const [groupsLoading, setGroupsLoading] = useState(true);
   const unsubRef = useRef<(() => void) | null>(null);
 
+  /** 選択中のPlaceGroup ID（null = 最初のグループ） */
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+
   const userCanEdit = uid && note ? canEdit(note, uid) : false;
 
-  // ── Premium ステータス（Phase 12.5H-7A） ──────────────────────────────────
   const { isPremiumUser, loading: premiumLoading } = usePremiumStatus(uid);
 
   // ── ルート表示モード ──────────────────────────────────────────────────────
   const [routeMode, setRouteMode] = useState<RouteDisplayMode>('straight');
   const [premiumTravelMode, setPremiumTravelMode] = useState<PremiumRouteTravelMode>('walking');
-  /** true = 区間別モード（mixed route mode） */
   const [isMixedMode, setIsMixedMode] = useState(false);
-  /** 区間別モードの各区間移動手段選択 */
   const [segmentTravelModes, setSegmentTravelModes] = useState<SegmentModeEntry[]>([]);
 
   // ── ルート生成状態 ────────────────────────────────────────────────────────
@@ -289,26 +236,22 @@ export default function NoteMapScreen() {
   const [routeGenerationStatus, setRouteGenerationStatus] = useState<RouteGenerationStatus>('idle');
   const [routeGenerationError, setRouteGenerationError] = useState<string | null>(null);
 
-  /** プレミアムモード（徒歩/車/公共交通）を選択した際の処理 */
   function selectPremiumMode(mode: PremiumRouteTravelMode) {
     if (__DEV__) console.log('[map] premium mode selected', { mode });
     setPremiumTravelMode(mode);
     setRouteMode('premium');
     setIsMixedMode(false);
-    // モード変更時にセグメントをリセット（別モードのデータを見せない）
     setRouteSegments([]);
     setRouteGenerationStatus('idle');
     setRouteGenerationError(null);
   }
 
-  /** 区間別モードを選択した際の処理 */
   function selectMixedMode() {
     setRouteMode('premium');
     setIsMixedMode(true);
     setRouteSegments([]);
     setRouteGenerationStatus('idle');
     setRouteGenerationError(null);
-    // 区間別モード初期化: 現在の全体モード（transit なら walking）を全区間に適用
     const gwl = getGroupsWithLocation(groups);
     if (gwl.length >= 2) {
       const defaultMode: PremiumRouteTravelMode =
@@ -342,22 +285,20 @@ export default function NoteMapScreen() {
           setRouteSegments(result.segments);
           setRouteGenerationStatus(result.segments.length > 0 ? 'success' : 'idle');
         } else {
-          if (__DEV__) console.log('[map] getNoteRouteSegments final input', { noteId: targetNoteId, travelMode: effectiveMode });
+          if (__DEV__) console.log('[map] loadRouteSegments effectiveMode', { noteId: targetNoteId, travelMode: effectiveMode });
           const result = await getNoteRouteSegmentsCallable({ noteId: targetNoteId, travelMode: effectiveMode });
           if (__DEV__) console.log('[map] routeSegments resultCount', { count: result.segments.length, effectiveMode });
           setRouteSegments(result.segments);
           setRouteGenerationStatus(result.segments.length > 0 ? 'success' : 'idle');
         }
       } catch (err) {
-        console.warn('[map] loadRouteSegments error:', err);
-        // 読み込み失敗は idle のままにして再生成を促す
+        if (__DEV__) console.warn('[map] loadRouteSegments error:', err);
         setRouteGenerationStatus('idle');
       }
     },
     []
   );
 
-  /** ルート生成ボタンを押したときの処理 */
   const handleGenerateRoutes = useCallback(
     async (forceRefresh = false) => {
       if (!noteId) return;
@@ -365,11 +306,9 @@ export default function NoteMapScreen() {
       setRouteGenerationError(null);
       try {
         if (isMixedMode) {
-          // 区間別モード: transit を含む全区間を送信
           const modesForApi = segmentTravelModes;
           if (__DEV__) console.log('[map] handleGenerateRoutes input', { isMixedMode: true, modesForApi, forceRefresh });
           await generateNoteRoutesCallable({ noteId, segmentTravelModes: modesForApi, forceRefresh });
-          // 区間別は travelMode を送らず全件取得
           await loadRouteSegments(noteId, 'mixed');
         } else {
           if (__DEV__) console.log('[map] handleGenerateRoutes input', { isMixedMode: false, travelMode: premiumTravelMode, forceRefresh });
@@ -399,14 +338,11 @@ export default function NoteMapScreen() {
     return () => unsubRef.current?.();
   }, [noteId]);
 
-  // Premium モード切替時に既存セグメントを読み込む
   useEffect(() => {
     if (!noteId || routeMode !== 'premium' || !isPremiumUser) return;
     if (isMixedMode) {
-      // 区間別モード: travelMode を送らず全件取得
       void loadRouteSegments(noteId, 'mixed');
     } else {
-      // 全体モード（徒歩/車/公共交通）: travelMode を指定して取得
       void loadRouteSegments(noteId, premiumTravelMode);
     }
   }, [noteId, routeMode, premiumTravelMode, isMixedMode, isPremiumUser, loadRouteSegments]);
@@ -414,62 +350,61 @@ export default function NoteMapScreen() {
   const groupsWithLocation = getGroupsWithLocation(groups);
   const initialRegion = calcRegionForGroups(groupsWithLocation);
 
-  // 生成済みセグメントから Polyline 座標を収集
+  // 選択中グループ（null なら最初のグループをデフォルトとする）
+  const selectedGroup =
+    (selectedGroupId ? groupsWithLocation.find((g) => g.id === selectedGroupId) : null) ??
+    groupsWithLocation[0] ??
+    null;
+  const selectedGroupIdx = selectedGroup ? groupsWithLocation.indexOf(selectedGroup) : -1;
+
+  // 選択グループの関連写真
+  const groupPhotoURLs: string[] = selectedGroup
+    ? selectedGroup.photoIds && selectedGroup.photoIds.length > 0
+      ? allPhotos
+          .filter((p) => (selectedGroup.photoIds as string[]).includes(p.id))
+          .map((p) => p.downloadURL)
+          .filter(Boolean)
+          .slice(0, 8)
+      : (selectedGroup.photoPreviewURLs ?? []).slice(0, 8)
+    : [];
+
+  // Polyline 生成
   const generatedPolylines: { coordinates: { latitude: number; longitude: number }[]; color: string }[] = [];
   if (routeMode === 'premium' && isPremiumUser) {
     if (!isMixedMode) {
-      // 全体モード（徒歩/車/公共交通）: 全セグメントを同じ色で表示
       for (const s of routeSegments) {
         if (s.status === 'generated' && s.decodedPolyline && s.decodedPolyline.length > 0) {
-          generatedPolylines.push({
-            coordinates: s.decodedPolyline,
-            color: getRouteColor(premiumTravelMode),
-          });
+          generatedPolylines.push({ coordinates: s.decodedPolyline, color: getRouteColor(premiumTravelMode) });
         }
       }
-    } else if (isMixedMode) {
-      // 区間別モード: 各区間の選択モードに一致するセグメントを色分けで表示
+    } else {
       for (const s of routeSegments) {
         if (s.status !== 'generated' || !s.decodedPolyline || s.decodedPolyline.length === 0) continue;
-        const selectedMode = getSegmentMode(
-          segmentTravelModes,
-          s.fromPlaceGroupId,
-          s.toPlaceGroupId
-        );
+        const selectedMode = getSegmentMode(segmentTravelModes, s.fromPlaceGroupId, s.toPlaceGroupId);
         if (s.travelMode === selectedMode) {
-          generatedPolylines.push({
-            coordinates: s.decodedPolyline,
-            color: getRouteColor(s.travelMode ?? 'walking'),
-          });
+          generatedPolylines.push({ coordinates: s.decodedPolyline, color: getRouteColor(s.travelMode ?? 'walking') });
         }
       }
     }
   }
 
-  // 失敗区間のフォールバック直線を収集
+  // 失敗区間フォールバック直線
   const fallbackPolylines: { from: PlaceGroupDoc; to: PlaceGroupDoc }[] = [];
   if (routeMode === 'premium' && isPremiumUser) {
     if (!isMixedMode && routeSegments.length > 0) {
-      // 全体モード: 失敗/stale なセグメントのフォールバック
       const failedSegments = routeSegments.filter((s) => s.status === 'failed' || s.status === 'stale');
       for (const seg of failedSegments) {
         const fromGroup = groupsWithLocation.find((g) => g.id === seg.fromPlaceGroupId);
         const toGroup = groupsWithLocation.find((g) => g.id === seg.toPlaceGroupId);
-        if (fromGroup && toGroup) {
-          fallbackPolylines.push({ from: fromGroup, to: toGroup });
-        }
+        if (fromGroup && toGroup) fallbackPolylines.push({ from: fromGroup, to: toGroup });
       }
     } else if (isMixedMode) {
-      // 区間別モード: 生成済みでない区間をフォールバック表示
       for (let i = 0; i < groupsWithLocation.length - 1; i++) {
         const from = groupsWithLocation[i];
         const to = groupsWithLocation[i + 1];
         const selectedMode = getSegmentMode(segmentTravelModes, from.id, to.id);
         const matchSeg = routeSegments.find(
-          (s) =>
-            s.fromPlaceGroupId === from.id &&
-            s.toPlaceGroupId === to.id &&
-            s.travelMode === selectedMode
+          (s) => s.fromPlaceGroupId === from.id && s.toPlaceGroupId === to.id && s.travelMode === selectedMode
         );
         if (!matchSeg || matchSeg.status !== 'generated' || !matchSeg.decodedPolyline?.length) {
           fallbackPolylines.push({ from, to });
@@ -477,6 +412,8 @@ export default function NoteMapScreen() {
       }
     }
   }
+
+  // ── ローディング / 空状態 ─────────────────────────────────────────────────
 
   if (noteLoading || groupsLoading || premiumLoading) {
     return (
@@ -490,7 +427,6 @@ export default function NoteMapScreen() {
     );
   }
 
-  // PlaceGroup 自体がまだない
   if (groups.length === 0) {
     return (
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -498,15 +434,12 @@ export default function NoteMapScreen() {
         <View style={styles.centered}>
           <Text style={styles.emptyEmoji}>📍</Text>
           <Text style={styles.emptyTitle}>訪れた場所がまだありません</Text>
-          <Text style={styles.emptyDesc}>
-            写真から場所を推定すると、地図に表示されます。
-          </Text>
+          <Text style={styles.emptyDesc}>写真から場所を推定すると、地図に表示されます。</Text>
         </View>
       </SafeAreaView>
     );
   }
 
-  // PlaceGroup はあるが全件位置情報なし
   if (groupsWithLocation.length === 0) {
     return (
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -514,53 +447,51 @@ export default function NoteMapScreen() {
         <View style={styles.centered}>
           <Text style={styles.emptyEmoji}>🗺️</Text>
           <Text style={styles.emptyTitle}>位置情報のある場所がありません</Text>
-          <Text style={styles.emptyDesc}>
-            位置情報のある写真を追加して場所を推定すると、地図に表示されます。
-          </Text>
+          <Text style={styles.emptyDesc}>位置情報のある写真を追加すると、地図に表示されます。</Text>
         </View>
       </SafeAreaView>
     );
   }
 
-  // 実ルートPolylineを表示するか（生成済みセグメントがある場合）
   const hasGeneratedRoutes = generatedPolylines.length > 0;
-  // 直線Polylineを表示するか（区間別モードでは per-pair フォールバックを使うので全体直線は非表示）
   const showStraightLine =
     routeMode === 'straight' ||
     (routeMode === 'premium' && !isMixedMode && !hasGeneratedRoutes);
 
+  // ── レンダー ──────────────────────────────────────────────────────────────
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScreenHeader title="地図" onBack={() => router.back()} />
+      <ScreenHeader
+        title="地図"
+        onBack={() => router.back()}
+      />
 
-      {/* ── Map ── */}
+      {/* ── Map Canvas ── */}
       <MapView
         style={{ height: MAP_HEIGHT }}
         initialRegion={initialRegion}
         showsUserLocation={false}
-        showsCompass
-        showsScale
+        showsCompass={false}
+        showsScale={false}
       >
         {/* 直線Polyline（直線モードまたは実ルート未生成時） */}
         {groupsWithLocation.length >= 2 && showStraightLine ? (
           <Polyline
-            coordinates={groupsWithLocation.map((g) => ({
-              latitude: g.latitude,
-              longitude: g.longitude,
-            }))}
-            strokeColor={hasGeneratedRoutes ? '#CCCCCC' : '#4FA8A1'}
-            strokeWidth={2.5}
+            coordinates={groupsWithLocation.map((g) => ({ latitude: g.latitude, longitude: g.longitude }))}
+            strokeColor={colors.mapAccent}
+            strokeWidth={2}
             lineDashPattern={[8, 5]}
           />
         ) : null}
 
-        {/* 実ルートPolyline（生成済みセグメントの decodedPolyline を描画） */}
+        {/* 実ルートPolyline */}
         {generatedPolylines.map((pl, idx) => (
           <Polyline
             key={`route-${idx}`}
             coordinates={pl.coordinates}
             strokeColor={pl.color}
-            strokeWidth={3.5}
+            strokeWidth={3}
           />
         ))}
 
@@ -572,20 +503,24 @@ export default function NoteMapScreen() {
               { latitude: fb.from.latitude, longitude: fb.from.longitude },
               { latitude: fb.to.latitude, longitude: fb.to.longitude },
             ]}
-            strokeColor="#AAAAAA"
-            strokeWidth={2}
+            strokeColor="#BBBBBB"
+            strokeWidth={1.5}
             lineDashPattern={[6, 4]}
           />
         ))}
 
+        {/* 番号付きピン */}
         {groupsWithLocation.map((group, idx) => (
           <Marker
             key={group.id}
             coordinate={{ latitude: group.latitude, longitude: group.longitude }}
-            title={`#${idx + 1} ${group.label}`}
-            description={getCategoryLabel(group.category)}
+            onPress={() => setSelectedGroupId(group.id)}
           >
-            <NumberedMarkerView number={idx + 1} confirmed={group.userConfirmed} />
+            <NumberedMarkerView
+              number={idx + 1}
+              confirmed={group.userConfirmed}
+              selected={group.id === selectedGroup?.id}
+            />
           </Marker>
         ))}
       </MapView>
@@ -595,52 +530,159 @@ export default function NoteMapScreen() {
         style={styles.bottomSheet}
         contentContainerStyle={styles.bottomSheetContent}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
-        {/* ── ルート表示モード ── */}
+
+        {/* ── Section 1: Selected Place Card ── */}
+        {selectedGroup ? (
+          <View style={styles.selectedCard}>
+            <View style={styles.selectedCardHeader}>
+              <View style={styles.selectedNumBadge}>
+                <Text style={styles.selectedNum}>#{selectedGroupIdx + 1}</Text>
+              </View>
+              {formatStartTime(selectedGroup) ? (
+                <Text style={styles.selectedTime}>{formatStartTime(selectedGroup)}</Text>
+              ) : null}
+              <View style={[
+                styles.confirmedChip,
+                selectedGroup.userConfirmed ? styles.confirmedChipYes : styles.confirmedChipNo,
+              ]}>
+                <Text style={[
+                  styles.confirmedChipText,
+                  selectedGroup.userConfirmed ? styles.confirmedChipTextYes : styles.confirmedChipTextNo,
+                ]}>
+                  {selectedGroup.userConfirmed ? '場所確認済み' : '未確認'}
+                </Text>
+              </View>
+            </View>
+
+            <Text style={styles.selectedName}>{selectedGroup.label}</Text>
+            <Text style={styles.selectedCategory}>{getCategoryLabel(selectedGroup.category)}</Text>
+
+            {selectedGroup.eventMemo ? (
+              <Text style={styles.selectedMemo} numberOfLines={2}>{selectedGroup.eventMemo}</Text>
+            ) : null}
+
+            <View style={styles.selectedActions}>
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={() => router.push(`/(app)/notes/${noteId}/flows/${selectedGroup.id}` as any)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.actionButtonText}>詳細を見る</Text>
+              </TouchableOpacity>
+              {userCanEdit ? (
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.actionButtonAccent]}
+                  onPress={() => router.push(`/(app)/notes/${noteId}/places/${selectedGroup.id}` as any)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.actionButtonText, styles.actionButtonAccentText]}>場所を確認</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </View>
+        ) : null}
+
+        {/* ── Section 2: 関連写真 ── */}
+        {groupPhotoURLs.length > 0 ? (
+          <View style={styles.photoSection}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.photoStrip}
+            >
+              {groupPhotoURLs.map((url, idx) => (
+                <TouchableOpacity
+                  key={idx}
+                  activeOpacity={0.85}
+                  onPress={() =>
+                    router.push(
+                      `/(app)/notes/${noteId}/photos/viewer?initialIndex=${idx}&placeGroupId=${selectedGroup?.id}` as any
+                    )
+                  }
+                >
+                  <Image source={{ uri: url }} style={styles.photoThumb} resizeMode="cover" />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        ) : null}
+
+        {/* ── Section 3: この日の流れ（コンパクトタイムライン） ── */}
+        <View style={styles.timelineSection}>
+          <Text style={styles.sectionLabel}>この日の流れ</Text>
+          <View style={styles.timelineList}>
+            {groupsWithLocation.map((group, idx) => {
+              const isLast = idx === groupsWithLocation.length - 1;
+              const isSelected = group.id === selectedGroup?.id;
+              const timeStr = formatStartTime(group);
+              return (
+                <TouchableOpacity
+                  key={group.id}
+                  style={styles.timelineItem}
+                  onPress={() => setSelectedGroupId(group.id)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.timelineLeft}>
+                    <View style={[styles.timelinePin, isSelected && styles.timelinePinSelected]}>
+                      <Text style={[styles.timelinePinText, isSelected && styles.timelinePinTextSelected]}>
+                        #{idx + 1}
+                      </Text>
+                    </View>
+                    {!isLast ? <View style={styles.timelineLine} /> : null}
+                  </View>
+                  <View style={styles.timelineRight}>
+                    {timeStr ? <Text style={styles.timelineTime}>{timeStr}</Text> : null}
+                    <Text style={[styles.timelineLabel, isSelected && styles.timelineLabelSelected]} numberOfLines={1}>
+                      {group.label}
+                    </Text>
+                    <Text style={styles.timelineCategory}>
+                      {getCategoryLabel(group.category)}
+                      {group.photoCount > 0 ? ` · 写真${group.photoCount}枚` : ''}
+                    </Text>
+                  </View>
+                  <Text style={styles.timelineChevron}>›</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* ── Section 4: ルート表示モード ── */}
         <View style={styles.routeSection}>
           <Text style={styles.sectionLabel}>ルート表示</Text>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.routeModeRow}
+            contentContainerStyle={styles.routeChipRow}
           >
-            {/* 直線ルート（無料） */}
+            {/* 直線（無料） */}
             <TouchableOpacity
               style={[styles.routeChip, routeMode === 'straight' && styles.routeChipActive]}
               onPress={() => { setRouteMode('straight'); setIsMixedMode(false); }}
               activeOpacity={0.7}
             >
-              <Text
-                style={[
-                  styles.routeChipText,
-                  routeMode === 'straight' && styles.routeChipTextActive,
-                ]}
-              >
+              <Text style={[styles.routeChipText, routeMode === 'straight' && styles.routeChipTextActive]}>
                 直線
               </Text>
             </TouchableOpacity>
 
-            {/* プレミアムモード（徒歩・車） */}
-            {(['walking', 'driving'] as PremiumRouteTravelMode[]).map((mode) => {
-              const isSelected = routeMode === 'premium' && !isMixedMode && premiumTravelMode === mode;
+            {/* 徒歩 / 車 / 公共交通 */}
+            {(['walking', 'driving', 'transit'] as PremiumRouteTravelMode[]).map((mode) => {
+              const isActive = routeMode === 'premium' && !isMixedMode && premiumTravelMode === mode;
               return (
                 <TouchableOpacity
                   key={mode}
-                  style={[styles.routeChip, styles.routeChipPremium, isSelected && styles.routeChipActive]}
+                  style={[styles.routeChip, styles.routeChipPremium, isActive && styles.routeChipActive]}
                   onPress={() => selectPremiumMode(mode)}
                   activeOpacity={0.7}
                 >
-                  <Text
-                    style={[
-                      styles.routeChipText,
-                      styles.routeChipTextPremium,
-                      isSelected && styles.routeChipTextActive,
-                    ]}
-                  >
+                  <Text style={[styles.routeChipText, styles.routeChipTextPremium, isActive && styles.routeChipTextActive]}>
                     {getTravelModeLabel(mode)}
                   </Text>
                   {!isPremiumUser ? (
-                    <Text style={[styles.routeChipBadge, isSelected && styles.routeChipBadgeActive]}>
+                    <Text style={[styles.routeChipBadge, isActive && styles.routeChipBadgeActive]}>
                       Premium
                     </Text>
                   ) : null}
@@ -648,19 +690,13 @@ export default function NoteMapScreen() {
               );
             })}
 
-            {/* 区間別モード */}
+            {/* 区間別 */}
             <TouchableOpacity
               style={[styles.routeChip, styles.routeChipPremium, isMixedMode && styles.routeChipActive]}
               onPress={selectMixedMode}
               activeOpacity={0.7}
             >
-              <Text
-                style={[
-                  styles.routeChipText,
-                  styles.routeChipTextPremium,
-                  isMixedMode && styles.routeChipTextActive,
-                ]}
-              >
+              <Text style={[styles.routeChipText, styles.routeChipTextPremium, isMixedMode && styles.routeChipTextActive]}>
                 区間別
               </Text>
               {!isPremiumUser ? (
@@ -669,33 +705,6 @@ export default function NoteMapScreen() {
                 </Text>
               ) : null}
             </TouchableOpacity>
-
-            {/* 公共交通（Premium・次フェーズ対応予定） */}
-            {(() => {
-              const isSelected = routeMode === 'premium' && !isMixedMode && premiumTravelMode === 'transit';
-              return (
-                <TouchableOpacity
-                  style={[styles.routeChip, styles.routeChipPremium, isSelected && styles.routeChipActive]}
-                  onPress={() => selectPremiumMode('transit')}
-                  activeOpacity={0.7}
-                >
-                  <Text
-                    style={[
-                      styles.routeChipText,
-                      styles.routeChipTextPremium,
-                      isSelected && styles.routeChipTextActive,
-                    ]}
-                  >
-                    公共交通
-                  </Text>
-                  {!isPremiumUser ? (
-                    <Text style={[styles.routeChipBadge, isSelected && styles.routeChipBadgeActive]}>
-                      Premium
-                    </Text>
-                  ) : null}
-                </TouchableOpacity>
-              );
-            })()}
           </ScrollView>
 
           {/* 直線ルート説明 */}
@@ -705,14 +714,14 @@ export default function NoteMapScreen() {
             </Text>
           ) : null}
 
-          {/* 非Premium: Premium案内カード */}
+          {/* 非Premium: Premium案内 */}
           {routeMode === 'premium' && !isPremiumUser ? (
             <View style={styles.premiumCard}>
               <Text style={styles.premiumCardTitle}>実ルート表示はプレミアム機能です</Text>
               <Text style={styles.premiumCardDesc}>
                 {getTravelModeLabel(premiumTravelMode)}での{getPremiumRouteDescription(premiumTravelMode)}
                 {'\n'}
-                移動時間・距離・乗換情報まで記録できるようになります。
+                移動時間・距離まで記録できます。
               </Text>
               <TouchableOpacity
                 style={styles.premiumCardBtn}
@@ -731,7 +740,7 @@ export default function NoteMapScreen() {
             </View>
           ) : null}
 
-          {/* Premium: ルート生成UI（徒歩/車/公共交通/区間別） */}
+          {/* Premium: ルート生成UI */}
           {routeMode === 'premium' && isPremiumUser ? (
             <RouteGenerationPanel
               travelMode={premiumTravelMode}
@@ -751,118 +760,11 @@ export default function NoteMapScreen() {
                       : e
                   )
                 );
-                // モード変更時はセグメントをリセット（生成し直しが必要）
                 setRouteSegments([]);
                 setRouteGenerationStatus('idle');
               }}
             />
           ) : null}
-        </View>
-
-        {/* ── 場所カード（横スクロール） ── */}
-        <View style={styles.cardsSection}>
-          <Text style={styles.sectionLabel}>訪れた場所を地図で確認</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.cardsRow}
-          >
-            {groupsWithLocation.map((group, idx) => {
-              const badge = getStatusBadge(group);
-              const isConfirmed = group.userConfirmed;
-              const canNavigate = userCanEdit || isConfirmed;
-              return (
-                <TouchableOpacity
-                  key={group.id}
-                  style={styles.placeCard}
-                  onPress={() => {
-                    if (!canNavigate) return;
-                    router.push(`/(app)/notes/${noteId}/flows/${group.id}`);
-                  }}
-                  activeOpacity={canNavigate ? 0.7 : 1}
-                >
-                  {/* 番号バッジ + 時刻 */}
-                  <View style={styles.cardHeaderRow}>
-                    <View style={styles.cardNumberBadge}>
-                      <Text style={styles.cardNumberText}>#{idx + 1}</Text>
-                    </View>
-                    {formatStartTime(group) ? (
-                      <Text style={styles.cardTimeText}>{formatStartTime(group)}</Text>
-                    ) : null}
-                  </View>
-                  {/* 場所名 */}
-                  <Text style={styles.cardLabel} numberOfLines={2}>
-                    {group.label}
-                  </Text>
-                  {/* カテゴリタグ */}
-                  <View style={styles.cardTagRow}>
-                    <View style={styles.categoryTag}>
-                      <Text style={styles.categoryTagText}>
-                        {getCategoryLabel(group.category)}
-                      </Text>
-                    </View>
-                  </View>
-                  {/* 確認バッジ */}
-                  <View style={[styles.statusBadge, { backgroundColor: badge.color + '22' }]}>
-                    <Text style={[styles.statusBadgeText, { color: badge.color }]}>
-                      {badge.label}
-                    </Text>
-                  </View>
-                  {/* 写真枚数 */}
-                  {group.photoCount > 0 ? (
-                    <Text style={styles.cardMeta}>写真 {group.photoCount}枚</Text>
-                  ) : null}
-                  {/* 操作テキスト */}
-                  {canNavigate ? (
-                    <Text style={styles.cardAction}>詳細を見る →</Text>
-                  ) : null}
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
-
-        {/* ── 旅順プレビュー ── */}
-        <View style={styles.timelineSection}>
-          <Text style={styles.sectionLabel}>この日の流れ</Text>
-          <View style={styles.timelineList}>
-            {groupsWithLocation.map((group, idx) => {
-              const badge = getStatusBadge(group);
-              const isLast = idx === groupsWithLocation.length - 1;
-              const timeStr = formatStartTime(group);
-              return (
-                <View key={group.id} style={styles.timelineItem}>
-                  {/* 左: 番号 + 縦線 */}
-                  <View style={styles.timelineLeft}>
-                    <View style={styles.timelineNumberBadge}>
-                      <Text style={styles.timelineNumber}>#{idx + 1}</Text>
-                    </View>
-                    {!isLast ? <View style={styles.timelineLine} /> : null}
-                  </View>
-                  {/* 右: 情報 */}
-                  <View style={styles.timelineRight}>
-                    {timeStr ? (
-                      <Text style={styles.timelineTime}>{timeStr}</Text>
-                    ) : null}
-                    <Text style={styles.timelineLabel} numberOfLines={1}>
-                      {group.label}
-                    </Text>
-                    <View style={styles.timelineMetaRow}>
-                      <Text style={styles.timelineCategory}>
-                        {getCategoryLabel(group.category)}
-                        {group.photoCount > 0 ? ` · 写真${group.photoCount}枚` : ''}
-                      </Text>
-                      <View style={[styles.timelineBadge, { backgroundColor: badge.color + '22' }]}>
-                        <Text style={[styles.timelineBadgeText, { color: badge.color }]}>
-                          {badge.label}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-                </View>
-              );
-            })}
-          </View>
         </View>
 
         {/* 位置情報なし場所の案内 */}
@@ -874,13 +776,14 @@ export default function NoteMapScreen() {
           </View>
         ) : null}
 
-        <View style={{ height: 40 }} />
+        <View style={{ height: 48 }} />
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 // ── RouteGenerationPanel ──────────────────────────────────────────────────────
+// (既存の実装を維持。ルートロジックは変更しない)
 
 type RouteGenerationPanelProps = {
   travelMode: PremiumRouteTravelMode;
@@ -912,7 +815,6 @@ function RouteGenerationPanel({
   const generatedSegments = segments.filter((s) => s.status === 'generated');
   const failedSegments = segments.filter((s) => s.status === 'failed' || s.status === 'stale');
 
-  // ローディング中
   if (status === 'loading') {
     return (
       <View style={panelStyles.card}>
@@ -922,7 +824,6 @@ function RouteGenerationPanel({
     );
   }
 
-  // エラー
   if (status === 'error' && error) {
     return (
       <View style={panelStyles.card}>
@@ -935,13 +836,11 @@ function RouteGenerationPanel({
     );
   }
 
-  // 区間別モード: 区間セレクター（idle / success 共通表示）
+  // 区間別モード
   if (isMixedMode) {
     return (
       <View style={panelStyles.card}>
         <Text style={panelStyles.cardTitle}>区間ごとの移動手段</Text>
-
-        {/* 区間別セレクター */}
         {groups.length >= 2
           ? groups.slice(0, -1).map((fromGroup, idx) => {
               const toGroup = groups[idx + 1];
@@ -955,58 +854,35 @@ function RouteGenerationPanel({
                         s.travelMode === currentMode
                     )
                   : undefined;
-
               return (
                 <View key={fromGroup.id} style={panelStyles.segmentModeBlock}>
-                  {/* 区間ラベル */}
                   <Text style={panelStyles.segmentModeTitle} numberOfLines={1}>
                     #{idx + 1} {fromGroup.label} → #{idx + 2} {toGroup.label}
                   </Text>
-                  {/* 移動手段チップ */}
                   <View style={panelStyles.segmentModeChips}>
                     {(['walking', 'driving', 'transit'] as PremiumRouteTravelMode[]).map((mode) => {
                       const isActive = currentMode === mode;
                       return (
                         <TouchableOpacity
                           key={mode}
-                          style={[
-                            panelStyles.segmentModeChip,
-                            isActive && panelStyles.segmentModeChipActive,
-                          ]}
+                          style={[panelStyles.segmentModeChip, isActive && panelStyles.segmentModeChipActive]}
                           onPress={() => onSegmentModeChange(fromGroup.id, toGroup.id, mode)}
                           activeOpacity={0.7}
                         >
-                          <Text
-                            style={[
-                              panelStyles.segmentModeChipText,
-                              isActive && panelStyles.segmentModeChipTextActive,
-                            ]}
-                          >
+                          <Text style={[panelStyles.segmentModeChipText, isActive && panelStyles.segmentModeChipTextActive]}>
                             {getTravelModeLabel(mode)}
                           </Text>
                         </TouchableOpacity>
                       );
                     })}
                   </View>
-                  {/* 生成済み区間の距離・時間 */}
                   {matchSeg?.status === 'generated' ? (
-                    <Text
-                      style={[
-                        panelStyles.segmentInfo,
-                        { color: getRouteColor(currentMode) },
-                      ]}
-                    >
+                    <Text style={[panelStyles.segmentInfo, { color: getRouteColor(currentMode) }]}>
                       {[
                         getTravelModeLabel(currentMode),
-                        matchSeg.durationSeconds != null
-                          ? formatDuration(matchSeg.durationSeconds)
-                          : null,
-                        matchSeg.distanceMeters != null
-                          ? formatDistance(matchSeg.distanceMeters)
-                          : null,
-                      ]
-                        .filter(Boolean)
-                        .join(' / ')}
+                        matchSeg.durationSeconds != null ? formatDuration(matchSeg.durationSeconds) : null,
+                        matchSeg.distanceMeters != null ? formatDistance(matchSeg.distanceMeters) : null,
+                      ].filter(Boolean).join(' / ')}
                     </Text>
                   ) : null}
                 </View>
@@ -1014,14 +890,12 @@ function RouteGenerationPanel({
             })
           : null}
 
-        {/* 生成失敗区間の注記 */}
         {status === 'success' && failedSegments.length > 0 ? (
           <Text style={panelStyles.failedNote}>
-            ＊ 一部区間で実ルートを取得できませんでした。直線ルートで表示しています。
+            ＊ 一部区間はルートを取得できませんでした。直線で表示しています。
           </Text>
         ) : null}
 
-        {/* 生成 / 更新ボタン */}
         {status === 'success' && generatedSegments.length > 0 ? (
           <TouchableOpacity style={panelStyles.regenBtn} onPress={onRefresh} activeOpacity={0.7}>
             <Text style={panelStyles.regenBtnText}>選択した移動手段でルートを更新</Text>
@@ -1039,69 +913,51 @@ function RouteGenerationPanel({
     );
   }
 
-  // 全体モード（徒歩/車）— 生成済みセグメントあり
+  // 全体モード — 生成済み
   if (status === 'success' && generatedSegments.length > 0) {
     return (
       <View style={panelStyles.card}>
-        <Text style={[panelStyles.cardTitle, { color: routeColor }]}>
-          {modeLabel}ルート
-        </Text>
-        {/* 区間カード */}
+        <Text style={[panelStyles.cardTitle, { color: routeColor }]}>{modeLabel}ルート</Text>
         {segments.map((seg) => {
           const fromIdx = groups.findIndex((g) => g.id === seg.fromPlaceGroupId);
           const toIdx = groups.findIndex((g) => g.id === seg.toPlaceGroupId);
-          const fromLabel =
-            fromIdx >= 0
-              ? `#${fromIdx + 1} ${groups[fromIdx].label}`
-              : seg.fromPlaceGroupId.slice(0, 6);
-          const toLabel =
-            toIdx >= 0
-              ? `#${toIdx + 1} ${groups[toIdx].label}`
-              : seg.toPlaceGroupId.slice(0, 6);
+          const fromLabel = fromIdx >= 0 ? `#${fromIdx + 1} ${groups[fromIdx].label}` : seg.fromPlaceGroupId.slice(0, 6);
+          const toLabel = toIdx >= 0 ? `#${toIdx + 1} ${groups[toIdx].label}` : seg.toPlaceGroupId.slice(0, 6);
 
           if (seg.status === 'failed' || seg.status === 'stale') {
             return (
               <View key={seg.id} style={panelStyles.segmentRow}>
-                <Text style={panelStyles.segmentLabel} numberOfLines={1}>
-                  {fromLabel} → {toLabel}
-                </Text>
-                <Text style={panelStyles.segmentFailed}>——（ルート取得失敗）</Text>
+                <Text style={panelStyles.segmentLabel} numberOfLines={1}>{fromLabel} → {toLabel}</Text>
+                <Text style={panelStyles.segmentFailed}>この区間はルートを取得できませんでした。直線で表示しています。</Text>
               </View>
             );
           }
 
-          const durationStr =
-            seg.durationSeconds != null ? formatDuration(seg.durationSeconds) : null;
-          const distanceStr =
-            seg.distanceMeters != null ? formatDistance(seg.distanceMeters) : null;
+          const durationStr = seg.durationSeconds != null ? formatDuration(seg.durationSeconds) : null;
+          const distanceStr = seg.distanceMeters != null ? formatDistance(seg.distanceMeters) : null;
           const infoStr = [modeLabel, durationStr, distanceStr].filter(Boolean).join(' / ');
-
           return (
             <View key={seg.id} style={panelStyles.segmentRow}>
-              <Text style={panelStyles.segmentLabel} numberOfLines={1}>
-                {fromLabel} → {toLabel}
-              </Text>
+              <Text style={panelStyles.segmentLabel} numberOfLines={1}>{fromLabel} → {toLabel}</Text>
               <Text style={[panelStyles.segmentInfo, { color: routeColor }]}>{infoStr}</Text>
             </View>
           );
         })}
 
-        {/* 失敗区間の注記 */}
         {failedSegments.length > 0 ? (
           <Text style={panelStyles.failedNote}>
-            ＊ 一部区間で実ルートを取得できませんでした。直線ルートで表示しています。
+            ＊ 一部区間はルートを取得できませんでした。直線で表示しています。
           </Text>
         ) : null}
 
-        {/* 再生成ボタン */}
-        <TouchableOpacity style={[panelStyles.regenBtn]} onPress={onRefresh} activeOpacity={0.7}>
+        <TouchableOpacity style={panelStyles.regenBtn} onPress={onRefresh} activeOpacity={0.7}>
           <Text style={panelStyles.regenBtnText}>ルートを更新</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
-  // 全体モード（徒歩/車）— 未生成（idle）
+  // 全体モード — 未生成
   return (
     <View style={panelStyles.card}>
       <Text style={panelStyles.cardTitle}>{modeLabel}ルートを生成する</Text>
@@ -1124,462 +980,220 @@ const panelStyles = StyleSheet.create({
   card: {
     marginTop: 10,
     backgroundColor: colors.surface,
-    borderRadius: 12,
+    borderRadius: borderRadius.lg,
     borderWidth: 1,
     borderColor: colors.border,
     padding: 14,
     gap: 8,
   },
-  cardTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  cardDesc: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    lineHeight: 18,
-  },
+  cardTitle: { fontSize: 13, fontWeight: '700', color: colors.textPrimary },
+  cardDesc: { fontSize: 12, color: colors.textSecondary, lineHeight: 18 },
   generateBtn: {
-    alignSelf: 'flex-start',
-    marginTop: 4,
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    alignSelf: 'flex-start', marginTop: 4,
+    borderRadius: borderRadius.md, paddingHorizontal: 16, paddingVertical: 8,
   },
-  generateBtnText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  generateBtnTextWhite: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.white,
-  },
-  loadingText: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    textAlign: 'center',
-  },
-  errorText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.error,
-  },
-  errorDetail: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    lineHeight: 18,
-  },
-  segmentRow: {
-    gap: 2,
-    paddingVertical: 4,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  segmentLabel: {
-    fontSize: 12,
-    color: colors.textSecondary,
-  },
-  segmentInfo: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  segmentFailed: {
-    fontSize: 12,
-    color: colors.textTertiary,
-  },
-  failedNote: {
-    fontSize: 11,
-    color: colors.textTertiary,
-    lineHeight: 16,
-    marginTop: 4,
-  },
+  generateBtnText: { fontSize: 13, fontWeight: '700', color: colors.textPrimary },
+  generateBtnTextWhite: { fontSize: 13, fontWeight: '700', color: colors.white },
+  loadingText: { fontSize: 13, color: colors.textSecondary, textAlign: 'center' },
+  errorText: { fontSize: 13, fontWeight: '700', color: colors.error },
+  errorDetail: { fontSize: 12, color: colors.textSecondary, lineHeight: 18 },
+  segmentRow: { gap: 2, paddingVertical: 6, borderTopWidth: 1, borderTopColor: colors.border },
+  segmentLabel: { fontSize: 12, color: colors.textSecondary },
+  segmentInfo: { fontSize: 13, fontWeight: '600' },
+  segmentFailed: { fontSize: 12, color: colors.textTertiary, lineHeight: 18 },
+  failedNote: { fontSize: 11, color: colors.textTertiary, lineHeight: 16, marginTop: 4 },
   regenBtn: {
-    alignSelf: 'flex-start',
-    marginTop: 4,
-    backgroundColor: colors.surface,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    alignSelf: 'flex-start', marginTop: 4,
+    backgroundColor: colors.surface, borderRadius: borderRadius.md,
+    borderWidth: 1, borderColor: colors.border,
+    paddingHorizontal: 12, paddingVertical: 6,
   },
-  regenBtnText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.textSecondary,
-  },
-
-  // ── 区間別モード ──────────────────────────────────────────────────────────
-  segmentModeBlock: {
-    paddingVertical: 8,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    gap: 6,
-  },
-  segmentModeTitle: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    fontWeight: '500',
-  },
-  segmentModeChips: {
-    flexDirection: 'row',
-    gap: 6,
-  },
+  regenBtnText: { fontSize: 12, fontWeight: '600', color: colors.textSecondary },
+  // 区間別モード
+  segmentModeBlock: { paddingVertical: 8, borderTopWidth: 1, borderTopColor: colors.border, gap: 6 },
+  segmentModeTitle: { fontSize: 12, color: colors.textSecondary, fontWeight: '500' },
+  segmentModeChips: { flexDirection: 'row', gap: 6 },
   segmentModeChip: {
-    borderRadius: 16,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    backgroundColor: colors.surface,
+    borderRadius: borderRadius.full, borderWidth: 1.5, borderColor: colors.border,
+    paddingHorizontal: 10, paddingVertical: 4, backgroundColor: colors.surface,
   },
-  segmentModeChipActive: {
-    backgroundColor: colors.mapAccent,
-    borderColor: colors.mapAccent,
-  },
-  segmentModeChipText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.textSecondary,
-  },
-  segmentModeChipTextActive: {
-    color: colors.white,
-  },
+  segmentModeChipActive: { backgroundColor: colors.mapAccent, borderColor: colors.mapAccent },
+  segmentModeChipText: { fontSize: 12, fontWeight: '600', color: colors.textSecondary },
+  segmentModeChipTextActive: { color: colors.white },
 });
 
 // ── スタイル ──────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
+  container: { flex: 1, backgroundColor: colors.background },
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, paddingHorizontal: 32 },
+  loadingText: { fontSize: 14, color: colors.textTertiary },
+  emptyEmoji: { fontSize: 48, opacity: 0.5, marginBottom: 4 },
+  emptyTitle: { fontSize: 17, fontWeight: '600', color: colors.textPrimary, textAlign: 'center' },
+  emptyDesc: { fontSize: 13, color: colors.textSecondary, textAlign: 'center', lineHeight: 20, marginTop: 4 },
+
+  bottomSheet: { flex: 1, backgroundColor: colors.background },
+  bottomSheetContent: { paddingTop: 4, paddingBottom: 4 },
+
+  // Selected Place Card
+  selectedCard: {
+    marginHorizontal: 16,
+    marginTop: 14,
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.xl,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 16,
+    gap: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
   },
-  centered: {
+  selectedCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  selectedNumBadge: {
+    backgroundColor: colors.mapAccent,
+    borderRadius: borderRadius.md,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+  },
+  selectedNum: { fontSize: 12, fontWeight: '700', color: colors.white },
+  selectedTime: { fontSize: 13, fontWeight: '600', color: colors.mapAccent },
+  confirmedChip: {
+    marginLeft: 'auto',
+    borderRadius: borderRadius.full,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderWidth: 1,
+  },
+  confirmedChipYes: { backgroundColor: '#E6F4F0', borderColor: colors.success },
+  confirmedChipNo: { backgroundColor: colors.surfaceIvory, borderColor: colors.warning },
+  confirmedChipText: { fontSize: 11, fontWeight: '600' },
+  confirmedChipTextYes: { color: colors.success },
+  confirmedChipTextNo: { color: colors.warning },
+  selectedName: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, letterSpacing: -0.2 },
+  selectedCategory: { fontSize: 12, color: colors.textSecondary },
+  selectedMemo: { fontSize: 13, color: colors.textSecondary, fontStyle: 'italic', lineHeight: 18 },
+  selectedActions: { flexDirection: 'row', gap: 8, marginTop: 4 },
+  actionButton: {
     flex: 1,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    borderRadius: borderRadius.md,
+    paddingVertical: 9,
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+  },
+  actionButtonAccent: { borderColor: colors.mapAccent, backgroundColor: colors.mapAccentLight },
+  actionButtonText: { fontSize: 13, fontWeight: '600', color: colors.textSecondary },
+  actionButtonAccentText: { color: colors.mapAccent },
+
+  // Photo strip
+  photoSection: { marginTop: 10 },
+  photoStrip: { paddingHorizontal: 16, gap: 8 },
+  photoThumb: {
+    width: 90,
+    height: 90,
+    borderRadius: borderRadius.lg,
+    backgroundColor: colors.border,
+  },
+
+  // Compact timeline
+  timelineSection: { paddingHorizontal: 16, paddingTop: 18 },
+  timelineList: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: 4,
+    paddingHorizontal: 14,
+  },
+  timelineItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingVertical: 11,
+  },
+  timelineLeft: { width: 36, alignItems: 'center' },
+  timelinePin: {
+    width: 28,
+    height: 22,
+    borderRadius: 7,
+    backgroundColor: colors.mapAccentLight,
+    borderWidth: 1.5,
+    borderColor: colors.mapAccent,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
-    paddingHorizontal: 32,
   },
-  loadingText: {
-    fontSize: 14,
-    color: colors.textTertiary,
-  },
-  emptyEmoji: {
-    fontSize: 48,
-    opacity: 0.5,
-    marginBottom: 4,
-  },
-  emptyTitle: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: colors.textPrimary,
-    textAlign: 'center',
-  },
-  emptyDesc: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 20,
-    marginTop: 4,
-  },
+  timelinePinSelected: { backgroundColor: colors.mapAccent },
+  timelinePinText: { fontSize: 10, fontWeight: '700', color: colors.mapAccent },
+  timelinePinTextSelected: { color: colors.white },
+  timelineLine: { flex: 1, width: 1.5, backgroundColor: colors.border, marginTop: 2 },
+  timelineRight: { flex: 1, paddingLeft: 10, gap: 2 },
+  timelineTime: { fontSize: 12, fontWeight: '600', color: colors.mapAccent },
+  timelineLabel: { fontSize: 14, fontWeight: '600', color: colors.textPrimary },
+  timelineLabelSelected: { color: colors.mapAccent },
+  timelineCategory: { fontSize: 12, color: colors.textSecondary },
+  timelineChevron: { fontSize: 18, color: colors.textTertiary, alignSelf: 'center', paddingLeft: 4 },
 
-  // Bottom scroll area
-  bottomSheet: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  bottomSheetContent: {
-    paddingTop: 4,
-  },
-
-  // Route mode section
-  routeSection: {
-    paddingHorizontal: 20,
-    paddingTop: 14,
-    paddingBottom: 4,
-  },
-  routeModeRow: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingBottom: 2,
-  },
+  // Route section
+  routeSection: { paddingHorizontal: 16, paddingTop: 20 },
+  routeChipRow: { flexDirection: 'row', gap: 8, paddingBottom: 2 },
   routeChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     backgroundColor: colors.surface,
-    borderRadius: 20,
+    borderRadius: borderRadius.full,
     borderWidth: 1.5,
     borderColor: colors.border,
     paddingHorizontal: 14,
     paddingVertical: 7,
   },
-  routeChipActive: {
-    backgroundColor: colors.mapAccent,
-    borderColor: colors.mapAccent,
-  },
-  routeChipPremium: {
-    borderStyle: 'dashed',
-    borderColor: colors.textTertiary,
-  },
-  routeChipText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.textSecondary,
-  },
-  routeChipTextActive: {
-    color: colors.white,
-  },
-  routeChipTextPremium: {
-    color: colors.textTertiary,
-  },
+  routeChipActive: { backgroundColor: colors.mapAccent, borderColor: colors.mapAccent },
+  routeChipPremium: { borderStyle: 'dashed', borderColor: colors.textTertiary },
+  routeChipText: { fontSize: 13, fontWeight: '600', color: colors.textSecondary },
+  routeChipTextActive: { color: colors.white },
+  routeChipTextPremium: { color: colors.textTertiary },
   routeChipBadge: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: colors.textTertiary,
-    letterSpacing: 0.3,
-    backgroundColor: colors.surfaceIvory,
-    borderRadius: 4,
-    paddingHorizontal: 4,
-    paddingVertical: 1,
+    fontSize: 9, fontWeight: '700', color: colors.textTertiary,
+    letterSpacing: 0.3, backgroundColor: colors.surfaceIvory,
+    borderRadius: 4, paddingHorizontal: 4, paddingVertical: 1,
   },
-  routeChipBadgeActive: {
-    color: colors.white,
-    backgroundColor: 'rgba(255,255,255,0.25)',
-  },
-  routeNote: {
-    fontSize: 11,
-    color: colors.textTertiary,
-    marginTop: 8,
-    lineHeight: 16,
-  },
+  routeChipBadgeActive: { color: colors.white, backgroundColor: 'rgba(255,255,255,0.25)' },
+  routeNote: { fontSize: 11, color: colors.textTertiary, marginTop: 8, lineHeight: 16 },
 
-  // Premium notice card
+  // Premium card
   premiumCard: {
     marginTop: 10,
     backgroundColor: colors.surfaceIvory,
-    borderRadius: 12,
+    borderRadius: borderRadius.lg,
     borderWidth: 1,
     borderColor: colors.border,
     padding: 14,
     gap: 6,
   },
-  premiumCardTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  premiumCardDesc: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    lineHeight: 18,
-  },
+  premiumCardTitle: { fontSize: 13, fontWeight: '700', color: colors.textPrimary },
+  premiumCardDesc: { fontSize: 12, color: colors.textSecondary, lineHeight: 18 },
   premiumCardBtn: {
-    alignSelf: 'flex-start',
-    marginTop: 4,
-    backgroundColor: colors.surface,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    alignSelf: 'flex-start', marginTop: 4,
+    backgroundColor: colors.surface, borderRadius: borderRadius.md,
+    borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12, paddingVertical: 6,
   },
-  premiumCardBtnText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.textSecondary,
-  },
+  premiumCardBtnText: { fontSize: 12, fontWeight: '600', color: colors.textSecondary },
   premiumCardDevGuide: {
-    fontSize: 10,
-    color: colors.textTertiary,
-    marginTop: 8,
-    lineHeight: 15,
-    fontFamily: 'monospace' as const,
+    fontSize: 10, color: colors.textTertiary, marginTop: 8,
+    lineHeight: 15, fontFamily: 'monospace' as const,
   },
 
-  // Section
   sectionLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.textTertiary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.7,
-    marginBottom: 10,
+    fontSize: 12, fontWeight: '600', color: colors.textTertiary,
+    textTransform: 'uppercase', letterSpacing: 0.7, marginBottom: 10,
   },
 
-  // Place cards (horizontal scroll)
-  cardsSection: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-  },
-  cardsRow: {
-    paddingRight: 8,
-    gap: 10,
-  },
-  placeCard: {
-    width: 160,
-    backgroundColor: colors.surface,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 14,
-    gap: 5,
-  },
-  cardHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 4,
-  },
-  cardNumberBadge: {
-    backgroundColor: colors.mapAccent,
-    borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
-  cardNumberText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.white,
-  },
-  cardTimeText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.textSecondary,
-  },
-  cardLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.textPrimary,
-    lineHeight: 20,
-  },
-  cardTagRow: {
-    flexDirection: 'row',
-  },
-  categoryTag: {
-    backgroundColor: colors.mapAccentLight,
-    borderRadius: 6,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-  },
-  categoryTagText: {
-    fontSize: 11,
-    color: colors.mapAccent,
-    fontWeight: '500',
-  },
-  statusBadge: {
-    alignSelf: 'flex-start',
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  statusBadgeText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  cardMeta: {
-    fontSize: 11,
-    color: colors.textTertiary,
-  },
-  cardAction: {
-    fontSize: 12,
-    color: colors.mapAccent,
-    fontWeight: '500',
-    marginTop: 2,
-  },
-
-  // Timeline
-  timelineSection: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
-  },
-  timelineList: {
-    backgroundColor: colors.surface,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingVertical: 4,
-    paddingHorizontal: 16,
-  },
-  timelineItem: {
-    flexDirection: 'row',
-    paddingVertical: 12,
-  },
-  timelineLeft: {
-    width: 40,
-    alignItems: 'center',
-  },
-  timelineNumberBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: colors.mapAccentLight,
-    borderWidth: 1.5,
-    borderColor: colors.mapAccent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  timelineNumber: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: colors.mapAccent,
-  },
-  timelineLine: {
-    flex: 1,
-    width: 1.5,
-    backgroundColor: colors.border,
-    marginTop: 2,
-  },
-  timelineRight: {
-    flex: 1,
-    paddingLeft: 10,
-    justifyContent: 'center',
-    gap: 2,
-  },
-  timelineTime: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.mapAccent,
-  },
-  timelineLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.textPrimary,
-  },
-  timelineMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  timelineCategory: {
-    fontSize: 12,
-    color: colors.textSecondary,
-  },
-  timelineBadge: {
-    borderRadius: 8,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-  },
-  timelineBadgeText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-
-  // No-location note
   noLocationNote: {
-    marginHorizontal: 20,
-    marginTop: 12,
-    backgroundColor: colors.surfaceIvory,
-    borderRadius: 10,
-    padding: 12,
+    marginHorizontal: 16, marginTop: 12,
+    backgroundColor: colors.surfaceIvory, borderRadius: borderRadius.md, padding: 12,
   },
-  noLocationText: {
-    fontSize: 12,
-    color: colors.textTertiary,
-    lineHeight: 18,
-  },
+  noLocationText: { fontSize: 12, color: colors.textTertiary, lineHeight: 18 },
 });

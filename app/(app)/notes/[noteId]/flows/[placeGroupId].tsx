@@ -150,7 +150,7 @@ export default function FlowDetailScreen() {
               activeOpacity={0.92}
               onPress={() =>
                 router.push(
-                  `/(app)/notes/${noteId}/photos/viewer?initialIndex=0` as any
+                  `/(app)/notes/${noteId}/photos/viewer?initialIndex=0&placeGroupId=${placeGroupId}` as any
                 )
               }
             >
@@ -176,7 +176,7 @@ export default function FlowDetailScreen() {
                   activeOpacity={0.85}
                   onPress={() =>
                     router.push(
-                      `/(app)/notes/${noteId}/photos/viewer?initialIndex=${idx + 1}` as any
+                      `/(app)/notes/${noteId}/photos/viewer?initialIndex=${idx + 1}&placeGroupId=${placeGroupId}` as any
                     )
                   }
                 >
