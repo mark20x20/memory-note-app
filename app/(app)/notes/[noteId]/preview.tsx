@@ -1,6 +1,7 @@
 // UI-1: Memory Preview Screen
 // 思い出を読む画面 — 感情的に思い出を閲覧するための画面
 // Emotional reading surface. No confidence/status technical UI.
+// UI-3B: aiDiary 表示追加。photosLoading ゲート削除（EventMapPreview は独立購読）。重複 mapLink 削除。
 
 import { router, useLocalSearchParams } from 'expo-router';
 import {
@@ -34,7 +35,7 @@ export default function NotePreviewScreen() {
   const uid = authState.status === 'signedIn' ? authState.user.uid : null;
 
   const { note, isLoading, error } = useNoteDetail(noteId ?? null);
-  const { photos: notePhotos, isLoading: photosLoading } = useNotePhotos(noteId ?? null);
+  const { photos: notePhotos } = useNotePhotos(noteId ?? null);
 
   const coverPhoto = notePhotos[0] ?? null;
   const supportingPhotos = notePhotos.slice(1, 5);
@@ -172,25 +173,14 @@ export default function NotePreviewScreen() {
         />
 
         {/* ── 地図プレビュー ── */}
+        {/* EventMapPreview は内部で placeGroups を独立購読するため photosLoading の待機は不要。 */}
+        {/* "地図で見る" リンクは EventMapPreview の mapFooter に内包されているため重複リンク不要。 */}
         <View style={styles.section}>
-          {photosLoading ? (
-            <View style={styles.mapLoadingBox}>
-              <ActivityIndicator color={colors.mapAccent} />
-            </View>
-          ) : (
-            <EventMapPreview
-              noteId={noteId}
-              photoLocations={photoLocations}
-              height={200}
-            />
-          )}
-          <TouchableOpacity
-            style={styles.mapLink}
-            onPress={() => router.push(`/(app)/notes/${noteId}/map` as any)}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.mapLinkText}>地図を見る →</Text>
-          </TouchableOpacity>
+          <EventMapPreview
+            noteId={noteId}
+            photoLocations={photoLocations}
+            height={200}
+          />
         </View>
 
         {/* ── メモ ── */}
@@ -199,6 +189,16 @@ export default function NotePreviewScreen() {
             <Text style={styles.sectionLabel}>メモ</Text>
             <View style={styles.memoCard}>
               <Text style={styles.memoText}>{note.memo}</Text>
+            </View>
+          </View>
+        ) : null}
+
+        {/* ── AI日記 ── */}
+        {(note.aiDiaryStatus === 'completed' || note.aiDiaryStatus === 'edited') && note.aiDiary ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>AI日記</Text>
+            <View style={styles.memoCard}>
+              <Text style={styles.memoText}>{note.aiDiary}</Text>
             </View>
           </View>
         ) : null}
@@ -344,27 +344,6 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.8,
     marginBottom: 10,
-  },
-  // Map
-  mapLoadingBox: {
-    height: 200,
-    borderRadius: borderRadius.xl,
-    backgroundColor: colors.mapAccentLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  mapLink: {
-    alignSelf: 'flex-end',
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-    marginTop: 4,
-  },
-  mapLinkText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.mapAccent,
   },
   // Memo
   memoCard: {
