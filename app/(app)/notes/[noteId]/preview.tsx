@@ -23,7 +23,7 @@ import { getPhotoLocationsFromPhotos } from '@/features/map/utils/locationUtils'
 import { VisitTimelineSection } from '@/features/placeIntelligence/components/VisitTimelineSection';
 import { EventMapPreview } from '@/features/placeIntelligence/components/EventMapPreview';
 import { useAuth } from '@/core/auth/AuthContext';
-import { canEdit } from '@/features/memoryNotes/utils/permissions';
+import { canEdit, canManageMembers } from '@/features/memoryNotes/utils/permissions';
 
 function formatDate(date: Date): string {
   return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
@@ -41,6 +41,7 @@ export default function NotePreviewScreen() {
   const supportingPhotos = notePhotos.slice(1, 5);
   const photoLocations = getPhotoLocationsFromPhotos(notePhotos);
   const userCanEdit = uid && note ? canEdit(note, uid) : false;
+  const userCanManageMembers = uid && note ? canManageMembers(note, uid) : false;
 
   if (isLoading) {
     return (
@@ -203,6 +204,40 @@ export default function NotePreviewScreen() {
           </View>
         ) : null}
 
+        {/* ── ナビゲーション導線 (UI-7) ── */}
+        <View style={styles.actionsSection}>
+          <TouchableOpacity
+            style={styles.actionRow}
+            onPress={() => router.push(`/(app)/notes/${noteId}/map` as any)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.actionRowText}>🗺  地図で見る</Text>
+            <Text style={styles.actionRowArrow}>›</Text>
+          </TouchableOpacity>
+          <View style={styles.actionDivider} />
+          <TouchableOpacity
+            style={styles.actionRow}
+            onPress={() => router.push(`/(app)/notes/${noteId}/share` as any)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.actionRowText}>↗  共有カードを作成</Text>
+            <Text style={styles.actionRowArrow}>›</Text>
+          </TouchableOpacity>
+          {(note.noteType === 'shared' || userCanManageMembers) ? (
+            <>
+              <View style={styles.actionDivider} />
+              <TouchableOpacity
+                style={styles.actionRow}
+                onPress={() => router.push(`/(app)/notes/${noteId}/members` as any)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.actionRowText}>👥  メンバー</Text>
+                <Text style={styles.actionRowArrow}>›</Text>
+              </TouchableOpacity>
+            </>
+          ) : null}
+        </View>
+
         {/* ── 編集するCTA ── */}
         {userCanEdit ? (
           <View style={styles.ctaSection}>
@@ -357,6 +392,38 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.textPrimary,
     lineHeight: 24,
+  },
+  // Action links (UI-7)
+  actionsSection: {
+    marginHorizontal: 20,
+    marginTop: 20,
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.xl,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+  },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  actionRowText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.textSecondary,
+  },
+  actionRowArrow: {
+    fontSize: 18,
+    color: colors.textTertiary,
+    lineHeight: 20,
+  },
+  actionDivider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginHorizontal: 16,
   },
   // CTA
   ctaSection: {
