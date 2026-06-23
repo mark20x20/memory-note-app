@@ -32,7 +32,8 @@ export default function ShareCardScreen() {
   const { noteId } = useLocalSearchParams<{ noteId: string }>();
   const { width: screenWidth } = useWindowDimensions();
 
-  const [selectedFormat, setSelectedFormat] = useState<ShareCardFormat>('square');
+  // UI-9: 初期値は 4:5 (portrait) — Instagram feed に最適
+  const [selectedFormat, setSelectedFormat] = useState<ShareCardFormat>('portrait');
 
   const { note, isLoading: noteLoading } = useNoteDetail(noteId ?? null);
   const { photos, isLoading: photosLoading } = useNotePhotos(noteId ?? null);
@@ -87,6 +88,9 @@ export default function ShareCardScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <ScreenHeader title="共有カード" onBack={() => router.back()} />
+      <View style={styles.subHeader}>
+        <Text style={styles.subHeaderText}>思い出をきれいにまとめる</Text>
+      </View>
 
       <ScrollView
         contentContainerStyle={styles.scroll}
@@ -256,16 +260,30 @@ const styles = StyleSheet.create({
     color: colors.primary,
   },
 
+  // Sub header
+  subHeader: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  subHeaderText: {
+    fontSize: 13,
+    color: colors.textTertiary,
+    textAlign: 'center',
+  },
+
   // Card preview
   cardWrapper: {
     marginHorizontal: CARD_HORIZONTAL_PADDING,
-    borderRadius: 16,
+    borderRadius: 24,
     overflow: 'hidden',
     shadowColor: colors.textPrimary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.14,
+    shadowRadius: 16,
+    elevation: 6,
   },
   cardLoading: {
     backgroundColor: colors.surfaceIvory,

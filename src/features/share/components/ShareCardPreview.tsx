@@ -76,6 +76,17 @@ export const ShareCardPreview = forwardRef<View, ShareCardPreviewProps>(
             {note.title}
           </Text>
 
+          {/* 場所概要 (UI-9: visitedPlacesSummary から取得) */}
+          {note.visitedPlacesSummary?.areaLabel ? (
+            <Text style={styles.locationHint} numberOfLines={1}>
+              📍 {note.visitedPlacesSummary.areaLabel}
+            </Text>
+          ) : note.visitedPlacesSummary?.topPlaceLabels?.[0] ? (
+            <Text style={styles.locationHint} numberOfLines={1}>
+              📍 {note.visitedPlacesSummary.topPlaceLabels[0]}
+            </Text>
+          ) : null}
+
           {/* AI日記 / メモ */}
           {textContent ? (
             <Text style={styles.diary} numberOfLines={format === 'story' ? 6 : 4}>
@@ -133,11 +144,16 @@ const styles = StyleSheet.create({
     color: colors.primary,
   },
   title: {
-    fontSize: 17,
+    fontSize: 20,
     fontWeight: '700',
     color: colors.textPrimary,
     letterSpacing: -0.3,
-    lineHeight: 24,
+    lineHeight: 28,
+  },
+  locationHint: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: colors.mapAccent,
   },
   diary: {
     fontSize: 13,
