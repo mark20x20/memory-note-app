@@ -27,6 +27,12 @@ type OverviewPanelProps = {
   note: NoteDoc;
   photos: PhotoDoc[];
   isBusy: boolean;
+  /** UI-16B: 現在のユーザーが owner かどうか */
+  isOwner: boolean;
+  /** UI-16B: personal → shared への移行（メンバー招待画面へ誘導） */
+  onRequestShare: () => void;
+  /** UI-16B: shared → personal への変換（owner のみ） */
+  onConvertToPersonal: () => void;
 };
 
 export function OverviewPanel({
@@ -35,11 +41,14 @@ export function OverviewPanel({
   note,
   photos,
   isBusy,
+  isOwner,
+  onRequestShare,
+  onConvertToPersonal,
 }: OverviewPanelProps) {
   const coverPhoto = photos.find((p) => p.downloadURL === note.coverPhotoURL) ?? photos[0] ?? null;
   const dateStr = note.createdAt?.toDate ? formatDate(note.createdAt.toDate()) : null;
 
-  // UI-16: personal → shared への変更は確認Alertを表示
+  // UI-16B: personal → shared はメンバー招待画面へ誘導（noteType は招待成功時に CF が更新）
   const handleRequestConvertToShared = () => {
     if (isBusy || draft.noteType === 'shared') return;
     Alert.alert(
@@ -49,7 +58,24 @@ export function OverviewPanel({
         { text: 'キャンセル', style: 'cancel' },
         {
           text: '共有して招待する',
-          onPress: () => updateField('noteType', 'shared'),
+          onPress: () => onRequestShare(),
+        },
+      ]
+    );
+  };
+
+  // UI-16B: shared → personal（owner のみ）
+  const handleRequestConvertToPersonal = () => {
+    if (isBusy || draft.noteType === 'personal' || !isOwner) return;
+    Alert.alert(
+      '個人ノートに戻しますか？',
+      'メンバー全員がこのノートにアクセスできなくなります。この操作は取り消せません。',
+      [
+        { text: 'キャンセル', style: 'cancel' },
+        {
+          text: '個人に戻す',
+          style: 'destructive',
+          onPress: () => onConvertToPersonal(),
         },
       ]
     );
@@ -114,21 +140,18 @@ export function OverviewPanel({
             style={[
               styles.noteTypeButton,
               draft.noteType === 'personal' && styles.noteTypeButtonActive,
-              // shared から personal へは無効化
-              draft.noteType === 'shared' && styles.noteTypeButtonDisabled,
+              // shared かつ非 owner は無効化
+              draft.noteType === 'shared' && !isOwner && styles.noteTypeButtonDisabled,
             ]}
-            onPress={() => {
-              // shared → personal への変更は非対応 (UI-16)
-              if (draft.noteType === 'shared') return;
-            }}
-            disabled={isBusy || draft.noteType === 'shared'}
-            activeOpacity={draft.noteType === 'shared' ? 1 : 0.7}
+            onPress={handleRequestConvertToPersonal}
+            disabled={isBusy || draft.noteType === 'personal' || (draft.noteType === 'shared' && !isOwner)}
+            activeOpacity={draft.noteType === 'shared' && !isOwner ? 1 : 0.7}
           >
             <Text
               style={[
                 styles.noteTypeButtonText,
                 draft.noteType === 'personal' && styles.noteTypeButtonTextActive,
-                draft.noteType === 'shared' && styles.noteTypeButtonTextDisabled,
+                draft.noteType === 'shared' && !isOwner && styles.noteTypeButtonTextDisabled,
               ]}
             >
               🔒 自分だけ
@@ -155,10 +178,10 @@ export function OverviewPanel({
           </TouchableOpacity>
         </View>
 
-        {/* shared のとき: 個人設定に戻せない旨を案内 */}
-        {draft.noteType === 'shared' ? (
+        {/* shared のとき: owner は個人に戻せる、非 owner は案内のみ */}
+        {draft.noteType === 'shared' && !isOwner ? (
           <Text style={styles.sharingCaption}>
-            共有ノートから個人設定へ戻す機能は今後対応予定です
+            個人設定への変更はノートのオーナーのみ行えます
           </Text>
         ) : null}
       </View>

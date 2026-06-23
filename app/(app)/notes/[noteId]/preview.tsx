@@ -3,7 +3,6 @@
 // Emotional reading surface. No confidence/status technical UI.
 // UI-3B: aiDiary 表示追加。photosLoading ゲート削除（EventMapPreview は独立購読）。重複 mapLink 削除。
 
-import { useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import {
   View,
@@ -26,7 +25,6 @@ import { VisitTimelineSection } from '@/features/placeIntelligence/components/Vi
 import { EventMapPreview } from '@/features/placeIntelligence/components/EventMapPreview';
 import { useAuth } from '@/core/auth/AuthContext';
 import { canEdit } from '@/features/memoryNotes/utils/permissions';
-import { noteRepository } from '@/core/repositories/noteRepository';
 
 function formatDate(date: Date): string {
   return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
@@ -40,17 +38,16 @@ export default function NotePreviewScreen() {
   const { note, isLoading, error } = useNoteDetail(noteId ?? null);
   const { photos: notePhotos } = useNotePhotos(noteId ?? null);
 
-  // UI-16: personal → shared 変換中フラグ
-  const [isConverting, setIsConverting] = useState(false);
-
   const coverPhoto = notePhotos[0] ?? null;
   const supportingPhotos = notePhotos.slice(1, 5);
   const photoLocations = getPhotoLocationsFromPhotos(notePhotos);
   const userCanEdit = uid && note ? canEdit(note, uid) : false;
+  // UI-16B: "メンバーと共有する" は owner のみ表示
+  const isOwner = note ? note.ownerId === uid : false;
 
-  // UI-16: preview から直接 personal → shared へ変換する
+  // UI-16B: メンバーと共有する → メンバー招待画面へ（noteType は招待成功時に CF が変更）
   const handleConvertToShared = () => {
-    if (!noteId || isConverting) return;
+    if (!noteId) return;
     Alert.alert(
       'このノートを共有しますか？',
       '共有ノートに変更すると、メンバーを招待できるようになります。',
@@ -58,17 +55,7 @@ export default function NotePreviewScreen() {
         { text: 'キャンセル', style: 'cancel' },
         {
           text: '共有して招待する',
-          onPress: async () => {
-            setIsConverting(true);
-            try {
-              await noteRepository.updateNoteType(noteId, 'shared');
-              router.push(`/(app)/notes/${noteId}/members` as any);
-            } catch {
-              Alert.alert('エラー', '共有設定の変更に失敗しました。もう一度お試しください。');
-            } finally {
-              setIsConverting(false);
-            }
-          },
+          onPress: () => router.push(`/(app)/notes/${noteId}/members` as any),
         },
       ]
     );
@@ -255,7 +242,7 @@ export default function NotePreviewScreen() {
             <Text style={styles.actionRowArrow}>›</Text>
           </TouchableOpacity>
 
-          {/* UI-16: shared → "メンバー", personal + canEdit → "メンバーと共有する" */}
+          {/* UI-16B: shared → "メンバー"（全メンバー表示）, personal + isOwner → "メンバーと共有する" */}
           {note.noteType === 'shared' ? (
             <>
               <View style={styles.actionDivider} />
@@ -268,18 +255,14 @@ export default function NotePreviewScreen() {
                 <Text style={styles.actionRowArrow}>›</Text>
               </TouchableOpacity>
             </>
-          ) : userCanEdit ? (
+          ) : isOwner ? (
             <>
               <View style={styles.actionDivider} />
               <TouchableOpacity
-                style={[styles.actionRow, isConverting && { opacity: 0.5 }]}
+                style={styles.actionRow}
                 onPress={handleConvertToShared}
-                disabled={isConverting}
                 activeOpacity={0.7}
               >
-                {isConverting ? (
-                  <ActivityIndicator size="small" color={colors.primary} style={styles.actionRowLoader} />
-                ) : null}
                 <Text style={[styles.actionRowText, { color: colors.primary }]}>
                   🔗  メンバーと共有する
                 </Text>
@@ -475,9 +458,6 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: colors.border,
     marginHorizontal: 16,
-  },
-  actionRowLoader: {
-    marginRight: 8,
   },
   // CTA
   ctaSection: {

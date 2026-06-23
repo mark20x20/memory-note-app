@@ -27,8 +27,9 @@ import { useNoteEditDraft } from '@/features/memoryNotes/hooks/useNoteEditDraft'
 import { useNotePhotos } from '@/features/photos/hooks/useNotePhotos';
 import { useDeleteNote } from '@/features/memoryNotes/hooks/useDeleteNote';
 import { usePlaceGroups } from '@/features/placeIntelligence/hooks/usePlaceGroups';
-import { canEdit, canDelete, canGenerateAiDiary } from '@/features/memoryNotes/utils/permissions';
+import { canEdit, canDelete, canGenerateAiDiary, canManageMembers } from '@/features/memoryNotes/utils/permissions';
 import { useGenerateDiary } from '@/features/memoryNotes/hooks/useGenerateDiary';
+import { useManageNoteMembers } from '@/features/memoryNotes/hooks/useManageNoteMembers';
 import type { EditTabKey } from '@/features/memoryNotes/types/edit';
 import { OverviewPanel } from '@/features/memoryNotes/components/edit/panels/OverviewPanel';
 import { PhotosPanel } from '@/features/memoryNotes/components/edit/panels/PhotosPanel';
@@ -65,6 +66,7 @@ export default function NoteEditScreen() {
   const { photos, isLoading: photosLoading } = useNotePhotos(noteId ?? null);
   const { deleteNote, isDeleting, error: deleteError } = useDeleteNote();
   const { generate: generateDiary, isGenerating: isGeneratingDiary, error: generateDiaryError } = useGenerateDiary();
+  const { convertToPersonal, isLoading: isManaging } = useManageNoteMembers();
   const { groups: placeGroups, isLoading: groupsLoading } = usePlaceGroups(noteId ?? null);
 
   // タブ state
@@ -74,8 +76,9 @@ export default function NoteEditScreen() {
   const userCanEdit = uid && note ? canEdit(note, uid) : false;
   const userCanDelete = uid && note ? canDelete(note, uid) : false;
   const userCanGenerateAiDiary = uid && note ? canGenerateAiDiary(note, uid) : false;
+  const isOwner = uid && note ? canManageMembers(note, uid) : false;
 
-  const isBusy = isSaving || isDeleting;
+  const isBusy = isSaving || isDeleting || isManaging;
 
   const handleSave = async () => {
     if (!userCanEdit) return;
@@ -83,19 +86,28 @@ export default function NoteEditScreen() {
       Alert.alert('入力エラー', 'タイトルを入力してください');
       return;
     }
-    // UI-16: personal → shared への変換を検知
-    const isConvertingToShared =
-      note?.noteType === 'personal' && draft.noteType === 'shared';
     try {
       await saveDraft();
-      if (isConvertingToShared && noteId) {
-        // 共有化した場合はメンバー招待画面へ遷移
-        router.replace(`/(app)/notes/${noteId}/members` as any);
-      } else {
-        router.back();
-      }
+      router.back();
     } catch {
       // saveError は useNoteEditDraft の state に格納済み
+    }
+  };
+
+  // UI-16B: メンバーと共有する → メンバー招待画面へ（noteType は招待成功時に CF が変更）
+  const handleRequestShare = () => {
+    if (!noteId) return;
+    router.push(`/(app)/notes/${noteId}/members` as any);
+  };
+
+  // UI-16B: shared → personal（owner のみ）
+  const handleConvertToPersonal = async () => {
+    if (!noteId) return;
+    try {
+      await convertToPersonal(noteId);
+      router.back();
+    } catch {
+      Alert.alert('エラー', '個人ノートへの変換に失敗しました。もう一度お試しください。');
     }
   };
 
@@ -211,6 +223,9 @@ export default function NoteEditScreen() {
               note={note}
               photos={photos}
               isBusy={isBusy}
+              isOwner={!!isOwner}
+              onRequestShare={handleRequestShare}
+              onConvertToPersonal={handleConvertToPersonal}
             />
           )}
 

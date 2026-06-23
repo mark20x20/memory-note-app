@@ -14,6 +14,8 @@ export interface UseManageNoteMembersResult {
   removeMember: (noteId: string, targetUid: string) => Promise<void>;
   /** UI-15: 自分自身でノートから退出する。leaveNote Cloud Function を呼ぶ。 */
   leaveNote: (noteId: string) => Promise<void>;
+  /** UI-16B: owner のみ。非 owner メンバー全員を削除し noteType を 'personal' に戻す。 */
+  convertToPersonal: (noteId: string) => Promise<void>;
   isLoading: boolean;
   error: string | null;
   clearError: () => void;
@@ -99,11 +101,27 @@ export function useManageNoteMembers(): UseManageNoteMembersResult {
     }
   };
 
+  // UI-16B: owner のみ。共有ノートを個人ノートに戻す。
+  const convertToPersonal = async (noteId: string): Promise<void> => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      await memberRepository.convertToPersonal(noteId);
+    } catch (e) {
+      const msg = toUserMessage(e, '個人ノートへの変換に失敗しました。もう一度お試しください。');
+      setError(msg);
+      throw new Error(msg);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return {
     addMember,
     updateRole,
     removeMember,
     leaveNote,
+    convertToPersonal,
     isLoading,
     error,
     clearError: () => setError(null),

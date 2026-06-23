@@ -107,9 +107,24 @@ export const memberRepository = {
     );
     await fn({ noteId });
   },
+
+  /**
+   * UI-16B: 共有ノートを個人ノートに戻す。
+   * owner のみ実行可能。非 owner メンバーを全員削除し noteType を 'personal' に変更する。
+   * Functions 側で owner 権限確認・メンバー削除・noteType 更新を行う。
+   */
+  async convertToPersonal(noteId: string): Promise<void> {
+    if (!functions) throw new Error('Firebase Functions not configured');
+    const fn = httpsCallable<{ noteId: string }, { success: boolean; removedCount: number }>(
+      functions,
+      'convertNoteToPersonal'
+    );
+    await fn({ noteId });
+  },
 } satisfies {
   addMemberByEmail: (noteId: string, email: string, role: Exclude<MemberRole, 'owner'>) => Promise<AddMemberResponse>;
   updateMemberRole: (noteId: string, targetUid: string, role: Exclude<MemberRole, 'owner'>) => Promise<void>;
   removeMember: (noteId: string, targetUid: string) => Promise<void>;
   leaveNote: (noteId: string) => Promise<void>;
+  convertToPersonal: (noteId: string) => Promise<void>;
 };

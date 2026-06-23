@@ -348,9 +348,10 @@ export const addNoteMemberByEmail = onCall(
       throw new HttpsError('already-exists', 'このユーザーはすでにメンバーです');
     }
 
-    // 7. members を更新（Admin SDK でドットパスを使って特定フィールドのみ更新）
+    // 7. members を更新 + noteType を 'shared' に設定（UI-16B: 招待成功時に初めて shared になる）
     await db.doc(`memory_notes/${noteId}`).update({
       [`members.${targetUid}`]: role,
+      noteType: 'shared',
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
@@ -573,5 +574,55 @@ export const removeNoteMember = onCall(
     );
 
     return { success: true };
+  }
+);
+
+// ── UI-16B: convertNoteToPersonal ───────────────────────────────────────────
+// owner のみ実行可能。非 owner メンバーを全員削除し noteType を 'personal' に戻す。
+
+export const convertNoteToPersonal = onCall(
+  { region: 'asia-northeast1' },
+  async (request) => {
+    // 1. 認証チェック
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', '認証が必要です');
+    }
+    const uid = request.auth.uid;
+
+    // 2. noteId バリデーション
+    const data = request.data as { noteId?: unknown };
+    if (typeof data.noteId !== 'string' || !data.noteId.trim()) {
+      throw new HttpsError('invalid-argument', 'noteId が必要です');
+    }
+    const noteId = data.noteId.trim();
+
+    const db = admin.firestore();
+
+    // 3. ノート取得・owner 権限確認
+    const noteSnap = await getOwnedNote(db, noteId, uid);
+    const noteData = noteSnap.data()!;
+    const members = noteData.members as Record<string, string> | undefined;
+
+    // 4. 非 owner メンバーの uid 一覧を収集
+    const nonOwnerUids = members
+      ? Object.keys(members).filter((memberId) => members[memberId] !== 'owner')
+      : [];
+
+    // 5. members から非 owner を削除 + noteType を 'personal' に更新
+    const updatePayload: Record<string, unknown> = {
+      noteType: 'personal',
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+    for (const memberId of nonOwnerUids) {
+      updatePayload[`members.${memberId}`] = admin.firestore.FieldValue.delete();
+    }
+
+    await db.doc(`memory_notes/${noteId}`).update(updatePayload);
+
+    console.log(
+      `[convertNoteToPersonal] noteId=${noteId} ownerUid=***${uid.slice(-4)} removedCount=${nonOwnerUids.length}`
+    );
+
+    return { success: true, removedCount: nonOwnerUids.length };
   }
 );
