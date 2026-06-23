@@ -1,5 +1,6 @@
 // Phase 11: ノートメンバー管理画面
 // UI-10: Note summary card / Role guide 追加 / UIトーン warm/safe/clear に整備
+// UI-13: ロール変更UIをトグルから Modal Bottom Sheet 方式へ変更
 //
 // - owner のみ: メンバー追加・ロール変更・削除
 // - owner 以外: 閲覧のみ（操作 UI は非表示）
@@ -17,6 +18,8 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ScreenHeader } from '@/shared/components/ui';
@@ -47,6 +50,13 @@ const ROLE_BADGE_TEXT: Record<MemberRole, string> = {
   owner: colors.textInverse,
   editor: colors.textInverse,
   viewer: colors.textSecondary,
+};
+
+/** ロール変更セレクターの対象メンバー情報 */
+type RoleSelectorTarget = {
+  uid: string;
+  displayName: string;
+  currentRole: 'editor' | 'viewer';
 };
 
 function formatDate(ts: { toDate: () => Date } | null | undefined): string | null {
@@ -89,6 +99,9 @@ export default function NoteMembersScreen() {
 
   const [addEmail, setAddEmail] = useState('');
   const [addRole, setAddRole] = useState<'editor' | 'viewer'>('editor');
+
+  // UI-13: ロール変更セレクター状態
+  const [roleSelectorTarget, setRoleSelectorTarget] = useState<RoleSelectorTarget | null>(null);
 
   const isOwner = uid && note ? canManageMembers(note, uid) : false;
   const isLoading = noteLoading || membersLoading;
@@ -152,6 +165,20 @@ export default function NoteMembersScreen() {
         },
       ]
     );
+  };
+
+  // UI-13: セレクターを開く
+  const openRoleSelector = (targetUid: string, displayName: string, currentRole: 'editor' | 'viewer') => {
+    setRoleSelectorTarget({ uid: targetUid, displayName, currentRole });
+  };
+
+  // UI-13: セレクターで role が選ばれた → modal を閉じて既存 handleUpdateRole を呼ぶ
+  const handleRoleSelected = (newRole: 'editor' | 'viewer') => {
+    if (!roleSelectorTarget) return;
+    const target = roleSelectorTarget;
+    setRoleSelectorTarget(null);
+    // 既存の確認Alert付きハンドラを呼ぶ
+    handleUpdateRole(target.uid, newRole);
   };
 
   // ── ローディング / エラー ────────────────────────────────────────────────
@@ -290,23 +317,23 @@ export default function NoteMembersScreen() {
                     </Text>
                   </View>
 
-                  {/* オーナーかつ対象が自分以外の場合のみ操作ボタンを表示 */}
+                  {/* UI-13: owner かつ対象が自分以外・owner 以外の場合のみ操作ボタンを表示 */}
                   {isOwner && member.uid !== uid && member.role !== 'owner' ? (
                     <View style={styles.memberActions}>
+                      {/* ロール変更ボタン → Modal セレクターを開く */}
                       <TouchableOpacity
                         style={[styles.actionButton, managing && styles.buttonDisabled]}
                         onPress={() =>
-                          handleUpdateRole(
+                          openRoleSelector(
                             member.uid,
-                            member.role === 'editor' ? 'viewer' : 'editor'
+                            member.displayName,
+                            member.role as 'editor' | 'viewer'
                           )
                         }
                         disabled={managing}
                         hitSlop={4}
                       >
-                        <Text style={styles.actionButtonText}>
-                          {member.role === 'editor' ? '閲覧者に' : '編集者に'}
-                        </Text>
+                        <Text style={styles.actionButtonText}>変更</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={[styles.removeButton, managing && styles.buttonDisabled]}
@@ -428,6 +455,92 @@ export default function NoteMembersScreen() {
 
         <View style={styles.bottomPad} />
       </ScrollView>
+
+      {/* ── UI-13: Role Selector Modal (Bottom Sheet) ── */}
+      <Modal
+        visible={roleSelectorTarget !== null}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setRoleSelectorTarget(null)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setRoleSelectorTarget(null)}
+        >
+          {/* Pressable の中で onPress を止めてシートの外タップを overlay に吸収 */}
+          <Pressable style={styles.modalSheet} onPress={() => {}}>
+            {/* ハンドルバー */}
+            <View style={styles.modalHandle} />
+
+            {/* 対象メンバー名 */}
+            <Text style={styles.modalMemberName} numberOfLines={1}>
+              {roleSelectorTarget?.displayName}
+            </Text>
+            <Text style={styles.modalSubtitle}>ロールを変更する</Text>
+
+            <View style={styles.modalDivider} />
+
+            {/* 編集者 option */}
+            <TouchableOpacity
+              style={[
+                styles.roleOptionRow,
+                roleSelectorTarget?.currentRole === 'editor' && styles.roleOptionRowCurrent,
+              ]}
+              onPress={() => handleRoleSelected('editor')}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.roleOptionBadge, { backgroundColor: ROLE_BADGE_BG.editor }]}>
+                <Text style={[styles.roleOptionBadgeText, { color: ROLE_BADGE_TEXT.editor }]}>
+                  編集者
+                </Text>
+              </View>
+              <View style={styles.roleOptionTextGroup}>
+                <Text style={styles.roleOptionLabel}>編集者</Text>
+                <Text style={styles.roleOptionDesc}>写真やメモを編集できます</Text>
+              </View>
+              {roleSelectorTarget?.currentRole === 'editor' ? (
+                <Text style={styles.roleOptionCheck}>✓</Text>
+              ) : null}
+            </TouchableOpacity>
+
+            <View style={styles.modalItemDivider} />
+
+            {/* 閲覧者 option */}
+            <TouchableOpacity
+              style={[
+                styles.roleOptionRow,
+                roleSelectorTarget?.currentRole === 'viewer' && styles.roleOptionRowCurrent,
+              ]}
+              onPress={() => handleRoleSelected('viewer')}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.roleOptionBadge, { backgroundColor: ROLE_BADGE_BG.viewer }]}>
+                <Text style={[styles.roleOptionBadgeText, { color: ROLE_BADGE_TEXT.viewer }]}>
+                  閲覧者
+                </Text>
+              </View>
+              <View style={styles.roleOptionTextGroup}>
+                <Text style={styles.roleOptionLabel}>閲覧者</Text>
+                <Text style={styles.roleOptionDesc}>思い出を見ることができます</Text>
+              </View>
+              {roleSelectorTarget?.currentRole === 'viewer' ? (
+                <Text style={styles.roleOptionCheck}>✓</Text>
+              ) : null}
+            </TouchableOpacity>
+
+            <View style={styles.modalDivider} />
+
+            {/* キャンセル */}
+            <TouchableOpacity
+              style={styles.modalCancelButton}
+              onPress={() => setRoleSelectorTarget(null)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.modalCancelText}>キャンセル</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -845,5 +958,116 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.textSecondary,
     lineHeight: 20,
+  },
+
+  // ── UI-13: Role Selector Modal ──────────────────────────────────────────
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingBottom: 32,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 16,
+  },
+  modalHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.border,
+    alignSelf: 'center',
+    marginBottom: 20,
+  },
+  modalMemberName: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  modalSubtitle: {
+    fontSize: 13,
+    color: colors.textTertiary,
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  modalDivider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginVertical: 12,
+  },
+  modalItemDivider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginLeft: 72,
+  },
+  roleOptionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 4,
+    gap: 14,
+    minHeight: 56,
+    borderRadius: borderRadius.md,
+  },
+  roleOptionRowCurrent: {
+    backgroundColor: colors.surfaceIvory,
+  },
+  roleOptionBadge: {
+    borderRadius: borderRadius.full,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    height: 26,
+    minWidth: 54,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  roleOptionBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  roleOptionTextGroup: {
+    flex: 1,
+    gap: 2,
+  },
+  roleOptionLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  roleOptionDesc: {
+    fontSize: 12,
+    color: colors.textTertiary,
+    lineHeight: 18,
+  },
+  roleOptionCheck: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.primary,
+    marginRight: 4,
+  },
+  modalCancelButton: {
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderRadius: borderRadius.xl,
+    backgroundColor: colors.surfaceIvory,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginTop: 4,
+  },
+  modalCancelText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.textSecondary,
   },
 });
