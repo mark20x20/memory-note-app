@@ -1,16 +1,18 @@
 // Phase 12.5G-4: フロー閲覧画面
 // UI-3A: Flow Detailリデザイン — 1つのFlowを「1つの章」として見せる
+// UI-6: eventMemo 編集カード追加
 // Route: /(app)/notes/[noteId]/flows/[placeGroupId]
 //
 // Layout:
 //   Hero photo (280h, radius 24)
 //   Flow meta (time / place / category / confirmed)
 //   Related photo strip
-//   Event memo
+//   Event memo (editable)
 //   Mini map
 //   Prev/next navigation
 //   Actions: 編集する / 場所を確認
 
+import { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -19,6 +21,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Image,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MapView, { Marker } from 'react-native-maps';
@@ -31,6 +34,7 @@ import { useNoteDetail } from '@/features/memoryNotes/hooks/useNoteDetail';
 import { useNotePhotos } from '@/features/photos/hooks/useNotePhotos';
 import { usePlaceGroups } from '@/features/placeIntelligence/hooks/usePlaceGroups';
 import { canEdit } from '@/features/memoryNotes/utils/permissions';
+import { updatePlaceGroupManuallyCallable } from '@/features/placeIntelligence/api/placeFunctionsClient';
 import type { PlaceGroupDoc } from '@/features/map/types';
 
 // ── ヘルパー ──────────────────────────────────────────────────────────────────
@@ -77,6 +81,12 @@ export default function FlowDetailScreen() {
   const { groups, isLoading } = usePlaceGroups(noteId ?? null);
   const { photos: allPhotos } = useNotePhotos(noteId ?? null);
 
+  // UI-6: eventMemo 編集ステート
+  const [isEditingMemo, setIsEditingMemo] = useState(false);
+  const [memoText, setMemoText] = useState('');
+  const [isSavingMemo, setIsSavingMemo] = useState(false);
+  const [memoSaveError, setMemoSaveError] = useState<string | null>(null);
+
   const userCanEdit = uid && note ? canEdit(note, uid) : false;
 
   const currentIdx = groups.findIndex((g) => g.id === placeGroupId);
@@ -93,6 +103,13 @@ export default function FlowDetailScreen() {
   const heroPhotoURL =
     flowPhotos[0]?.downloadURL ?? group?.coverPhotoURL ?? null;
   const stripPhotos = flowPhotos.slice(1, 6);
+
+  // group.eventMemo が外部から更新されたら memoText を同期 (編集中は上書きしない)
+  useEffect(() => {
+    if (!isEditingMemo) {
+      setMemoText(group?.eventMemo ?? '');
+    }
+  }, [group?.eventMemo, isEditingMemo]);
 
   // ── ローディング ──────────────────────────────────────────────────────────
 
@@ -121,6 +138,25 @@ export default function FlowDetailScreen() {
 
   const timeRange = formatTimeRange(group);
   const totalFlows = groups.length;
+
+  async function handleSaveMemo() {
+    if (!noteId || !placeGroupId) return;
+    setIsSavingMemo(true);
+    setMemoSaveError(null);
+    try {
+      await updatePlaceGroupManuallyCallable({
+        noteId,
+        placeGroupId,
+        eventMemo: memoText.trim() || null,
+      });
+      setIsEditingMemo(false);
+    } catch (err) {
+      if (__DEV__) console.warn('[flow] saveMemo error:', err);
+      setMemoSaveError('保存に失敗しました');
+    } finally {
+      setIsSavingMemo(false);
+    }
+  }
 
   // ── レンダー ──────────────────────────────────────────────────────────────
 
@@ -229,14 +265,75 @@ export default function FlowDetailScreen() {
         </View>
 
         {/* ── Section 3: Event Memo ── */}
-        {group.eventMemo ? (
-          <View style={styles.section}>
+        <View style={styles.section}>
+          <View style={styles.memoSectionHeader}>
             <Text style={styles.sectionLabel}>メモ</Text>
+            {userCanEdit && !isEditingMemo ? (
+              <TouchableOpacity onPress={() => setIsEditingMemo(true)} hitSlop={8}>
+                <Text style={styles.memoEditTrigger}>{group.eventMemo ? '編集' : '追加'}</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+
+          {isEditingMemo ? (
+            <View style={styles.memoEditCard}>
+              <TextInput
+                style={styles.memoInput}
+                value={memoText}
+                onChangeText={setMemoText}
+                multiline
+                placeholder="このフローの思い出を書いてみよう..."
+                placeholderTextColor={colors.textTertiary}
+                maxLength={300}
+                autoFocus
+                textAlignVertical="top"
+              />
+              <View style={styles.memoInputFooter}>
+                {memoSaveError ? (
+                  <Text style={styles.memoSaveError}>{memoSaveError}</Text>
+                ) : null}
+                <View style={styles.memoInputBottomRow}>
+                  <Text style={styles.memoCharCount}>{memoText.length} / 300</Text>
+                  <View style={styles.memoButtons}>
+                    <TouchableOpacity
+                      style={styles.memoCancelButton}
+                      onPress={() => {
+                        setIsEditingMemo(false);
+                        setMemoText(group.eventMemo ?? '');
+                        setMemoSaveError(null);
+                      }}
+                      disabled={isSavingMemo}
+                    >
+                      <Text style={styles.memoCancelText}>キャンセル</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.memoSaveButton, isSavingMemo && styles.memoSaveButtonDisabled]}
+                      onPress={handleSaveMemo}
+                      disabled={isSavingMemo}
+                    >
+                      {isSavingMemo ? (
+                        <ActivityIndicator size="small" color={colors.textInverse} />
+                      ) : (
+                        <Text style={styles.memoSaveText}>保存</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            </View>
+          ) : group.eventMemo ? (
             <View style={styles.memoCard}>
               <Text style={styles.memoText}>{group.eventMemo}</Text>
             </View>
-          </View>
-        ) : null}
+          ) : (
+            <View style={styles.memoEmptyCard}>
+              <Text style={styles.memoEmptyText}>まだメモがありません</Text>
+              {userCanEdit ? (
+                <Text style={styles.memoEmptyHint}>「追加」からこのフローの思い出を記録できます</Text>
+              ) : null}
+            </View>
+          )}
+        </View>
 
         {/* ── Section 4: Mini Map ── */}
         {group.latitude != null && group.longitude != null ? (
@@ -435,7 +532,19 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     marginBottom: 10,
   },
-  // Memo
+  // Memo section header
+  memoSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  memoEditTrigger: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.mapAccent,
+  },
+  // Memo view card (read-only)
   memoCard: {
     backgroundColor: colors.surface,
     borderRadius: borderRadius.xl,
@@ -444,6 +553,63 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   memoText: { fontSize: 14, color: colors.textPrimary, lineHeight: 22 },
+  // Memo empty state
+  memoEmptyCard: {
+    backgroundColor: colors.surfaceIvory,
+    borderRadius: borderRadius.xl,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 16,
+    alignItems: 'center',
+    gap: 4,
+  },
+  memoEmptyText: { fontSize: 13, color: colors.textTertiary, fontWeight: '500' },
+  memoEmptyHint: { fontSize: 11, color: colors.textTertiary, textAlign: 'center' },
+  // Memo edit card
+  memoEditCard: {
+    backgroundColor: '#FFFEF8',
+    borderRadius: borderRadius.xl,
+    borderWidth: 1.5,
+    borderColor: colors.mapAccent,
+    padding: 16,
+    gap: 12,
+  },
+  memoInput: {
+    fontSize: 14,
+    color: colors.textPrimary,
+    lineHeight: 22,
+    minHeight: 88,
+  },
+  memoInputFooter: { gap: 6 },
+  memoSaveError: { fontSize: 12, color: '#E53935' },
+  memoInputBottomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  memoCharCount: { fontSize: 11, color: colors.textTertiary },
+  memoButtons: { flexDirection: 'row', gap: 8 },
+  memoCancelButton: {
+    height: 34,
+    paddingHorizontal: 16,
+    borderRadius: borderRadius.full,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  memoCancelText: { fontSize: 13, fontWeight: '500', color: colors.textSecondary },
+  memoSaveButton: {
+    height: 34,
+    paddingHorizontal: 20,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.mapAccent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 56,
+  },
+  memoSaveButtonDisabled: { opacity: 0.6 },
+  memoSaveText: { fontSize: 13, fontWeight: '700', color: colors.textInverse },
   // Map
   mapContainer: {
     borderRadius: borderRadius.xl,
