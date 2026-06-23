@@ -3,6 +3,7 @@
 // Emotional reading surface. No confidence/status technical UI.
 // UI-3B: aiDiary 表示追加。photosLoading ゲート削除（EventMapPreview は独立購読）。重複 mapLink 削除。
 
+import { useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import {
   View,
@@ -11,6 +12,7 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
+  Alert,
   Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -23,7 +25,8 @@ import { getPhotoLocationsFromPhotos } from '@/features/map/utils/locationUtils'
 import { VisitTimelineSection } from '@/features/placeIntelligence/components/VisitTimelineSection';
 import { EventMapPreview } from '@/features/placeIntelligence/components/EventMapPreview';
 import { useAuth } from '@/core/auth/AuthContext';
-import { canEdit, canManageMembers } from '@/features/memoryNotes/utils/permissions';
+import { canEdit } from '@/features/memoryNotes/utils/permissions';
+import { noteRepository } from '@/core/repositories/noteRepository';
 
 function formatDate(date: Date): string {
   return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
@@ -37,11 +40,39 @@ export default function NotePreviewScreen() {
   const { note, isLoading, error } = useNoteDetail(noteId ?? null);
   const { photos: notePhotos } = useNotePhotos(noteId ?? null);
 
+  // UI-16: personal → shared 変換中フラグ
+  const [isConverting, setIsConverting] = useState(false);
+
   const coverPhoto = notePhotos[0] ?? null;
   const supportingPhotos = notePhotos.slice(1, 5);
   const photoLocations = getPhotoLocationsFromPhotos(notePhotos);
   const userCanEdit = uid && note ? canEdit(note, uid) : false;
-  const userCanManageMembers = uid && note ? canManageMembers(note, uid) : false;
+
+  // UI-16: preview から直接 personal → shared へ変換する
+  const handleConvertToShared = () => {
+    if (!noteId || isConverting) return;
+    Alert.alert(
+      'このノートを共有しますか？',
+      '共有ノートに変更すると、メンバーを招待できるようになります。',
+      [
+        { text: 'キャンセル', style: 'cancel' },
+        {
+          text: '共有して招待する',
+          onPress: async () => {
+            setIsConverting(true);
+            try {
+              await noteRepository.updateNoteType(noteId, 'shared');
+              router.push(`/(app)/notes/${noteId}/members` as any);
+            } catch {
+              Alert.alert('エラー', '共有設定の変更に失敗しました。もう一度お試しください。');
+            } finally {
+              setIsConverting(false);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   if (isLoading) {
     return (
@@ -204,7 +235,7 @@ export default function NotePreviewScreen() {
           </View>
         ) : null}
 
-        {/* ── ナビゲーション導線 (UI-7) ── */}
+        {/* ── ナビゲーション導線 (UI-7 / UI-16) ── */}
         <View style={styles.actionsSection}>
           <TouchableOpacity
             style={styles.actionRow}
@@ -223,7 +254,9 @@ export default function NotePreviewScreen() {
             <Text style={styles.actionRowText}>↗  共有カードを作成</Text>
             <Text style={styles.actionRowArrow}>›</Text>
           </TouchableOpacity>
-          {(note.noteType === 'shared' || userCanManageMembers) ? (
+
+          {/* UI-16: shared → "メンバー", personal + canEdit → "メンバーと共有する" */}
+          {note.noteType === 'shared' ? (
             <>
               <View style={styles.actionDivider} />
               <TouchableOpacity
@@ -232,6 +265,24 @@ export default function NotePreviewScreen() {
                 activeOpacity={0.7}
               >
                 <Text style={styles.actionRowText}>👥  メンバー</Text>
+                <Text style={styles.actionRowArrow}>›</Text>
+              </TouchableOpacity>
+            </>
+          ) : userCanEdit ? (
+            <>
+              <View style={styles.actionDivider} />
+              <TouchableOpacity
+                style={[styles.actionRow, isConverting && { opacity: 0.5 }]}
+                onPress={handleConvertToShared}
+                disabled={isConverting}
+                activeOpacity={0.7}
+              >
+                {isConverting ? (
+                  <ActivityIndicator size="small" color={colors.primary} style={styles.actionRowLoader} />
+                ) : null}
+                <Text style={[styles.actionRowText, { color: colors.primary }]}>
+                  🔗  メンバーと共有する
+                </Text>
                 <Text style={styles.actionRowArrow}>›</Text>
               </TouchableOpacity>
             </>
@@ -424,6 +475,9 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: colors.border,
     marginHorizontal: 16,
+  },
+  actionRowLoader: {
+    marginRight: 8,
   },
   // CTA
   ctaSection: {

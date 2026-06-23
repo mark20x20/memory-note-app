@@ -139,6 +139,20 @@ export const noteRepository = {
   },
 
   /**
+   * UI-16: noteType のみを更新する。ownerId / members は変更しない。
+   * Firestore Rules の `members == resource.data.members` 条件を満たすため
+   * updateDoc で noteType と updatedAt のみを書き込む。
+   */
+  async updateNoteType(noteId: string, noteType: NoteType): Promise<void> {
+    if (!db) throw new Error('Firestore not configured');
+    const noteRef = doc(db, 'memory_notes', noteId);
+    await updateDoc(noteRef, {
+      noteType,
+      updatedAt: serverTimestamp(),
+    });
+  },
+
+  /**
    * Phase 7: 写真アップロード完了後に代表写真URLと枚数をノートへ書き込む。
    */
   async updateCoverPhoto(

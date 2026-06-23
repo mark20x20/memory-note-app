@@ -1,5 +1,6 @@
 // UI-2: OverviewPanel — Edit画面の概要タブ
-// 表示: カバー写真, タイトル入力, noteType切替, 日付表示
+// 表示: カバー写真, タイトル入力, 共有設定, 日付表示
+// UI-16: 「ノートの種類」→「共有設定」, ラベル変更, personal→shared に確認Alert
 
 import {
   View,
@@ -8,6 +9,7 @@ import {
   TouchableOpacity,
   Image,
   StyleSheet,
+  Alert,
 } from 'react-native';
 import { colors } from '@/shared/theme/colors';
 import { borderRadius } from '@/shared/theme/spacing';
@@ -36,6 +38,22 @@ export function OverviewPanel({
 }: OverviewPanelProps) {
   const coverPhoto = photos.find((p) => p.downloadURL === note.coverPhotoURL) ?? photos[0] ?? null;
   const dateStr = note.createdAt?.toDate ? formatDate(note.createdAt.toDate()) : null;
+
+  // UI-16: personal → shared への変更は確認Alertを表示
+  const handleRequestConvertToShared = () => {
+    if (isBusy || draft.noteType === 'shared') return;
+    Alert.alert(
+      'このノートを共有しますか？',
+      '共有ノートに変更すると、メンバーを招待できるようになります。',
+      [
+        { text: 'キャンセル', style: 'cancel' },
+        {
+          text: '共有して招待する',
+          onPress: () => updateField('noteType', 'shared'),
+        },
+      ]
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -87,33 +105,43 @@ export function OverviewPanel({
         </View>
       ) : null}
 
-      {/* ノート種別 */}
+      {/* UI-16: 共有設定 (旧: ノートの種類) */}
       <View style={styles.field}>
-        <Text style={styles.fieldLabel}>ノートの種類</Text>
+        <Text style={styles.fieldLabel}>共有設定</Text>
         <View style={styles.noteTypeRow}>
+          {/* 自分だけ (personal) */}
           <TouchableOpacity
             style={[
               styles.noteTypeButton,
               draft.noteType === 'personal' && styles.noteTypeButtonActive,
+              // shared から personal へは無効化
+              draft.noteType === 'shared' && styles.noteTypeButtonDisabled,
             ]}
-            onPress={() => updateField('noteType', 'personal')}
-            disabled={isBusy}
+            onPress={() => {
+              // shared → personal への変更は非対応 (UI-16)
+              if (draft.noteType === 'shared') return;
+            }}
+            disabled={isBusy || draft.noteType === 'shared'}
+            activeOpacity={draft.noteType === 'shared' ? 1 : 0.7}
           >
             <Text
               style={[
                 styles.noteTypeButtonText,
                 draft.noteType === 'personal' && styles.noteTypeButtonTextActive,
+                draft.noteType === 'shared' && styles.noteTypeButtonTextDisabled,
               ]}
             >
-              👤 個人ノート
+              🔒 自分だけ
             </Text>
           </TouchableOpacity>
+
+          {/* メンバーと共有 (shared) */}
           <TouchableOpacity
             style={[
               styles.noteTypeButton,
               draft.noteType === 'shared' && styles.noteTypeButtonActive,
             ]}
-            onPress={() => updateField('noteType', 'shared')}
+            onPress={handleRequestConvertToShared}
             disabled={isBusy}
           >
             <Text
@@ -122,10 +150,17 @@ export function OverviewPanel({
                 draft.noteType === 'shared' && styles.noteTypeButtonTextActive,
               ]}
             >
-              🤝 共有ノート
+              👥 メンバーと共有
             </Text>
           </TouchableOpacity>
         </View>
+
+        {/* shared のとき: 個人設定に戻せない旨を案内 */}
+        {draft.noteType === 'shared' ? (
+          <Text style={styles.sharingCaption}>
+            共有ノートから個人設定へ戻す機能は今後対応予定です
+          </Text>
+        ) : null}
       </View>
 
       {/* 写真枚数 */}
@@ -233,6 +268,9 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
     backgroundColor: colors.primaryLight,
   },
+  noteTypeButtonDisabled: {
+    opacity: 0.4,
+  },
   noteTypeButtonText: {
     fontSize: 14,
     fontWeight: '500',
@@ -241,5 +279,14 @@ const styles = StyleSheet.create({
   noteTypeButtonTextActive: {
     color: colors.primary,
     fontWeight: '600',
+  },
+  noteTypeButtonTextDisabled: {
+    color: colors.textTertiary,
+  },
+  sharingCaption: {
+    fontSize: 12,
+    color: colors.textTertiary,
+    lineHeight: 18,
+    marginTop: 2,
   },
 });

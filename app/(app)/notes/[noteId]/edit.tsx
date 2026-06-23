@@ -83,9 +83,17 @@ export default function NoteEditScreen() {
       Alert.alert('入力エラー', 'タイトルを入力してください');
       return;
     }
+    // UI-16: personal → shared への変換を検知
+    const isConvertingToShared =
+      note?.noteType === 'personal' && draft.noteType === 'shared';
     try {
       await saveDraft();
-      router.back();
+      if (isConvertingToShared && noteId) {
+        // 共有化した場合はメンバー招待画面へ遷移
+        router.replace(`/(app)/notes/${noteId}/members` as any);
+      } else {
+        router.back();
+      }
     } catch {
       // saveError は useNoteEditDraft の state に格納済み
     }
