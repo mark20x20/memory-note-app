@@ -25,6 +25,7 @@ import { borderRadius } from '@/shared/theme/spacing';
 import { useAuth } from '@/core/auth/AuthContext';
 import { useNoteDetail } from '@/features/memoryNotes/hooks/useNoteDetail';
 import { useNotePhotos } from '@/features/photos/hooks/useNotePhotos';
+import { canOpenGroupedPhotoViewer } from '@/features/photos/utils/photoViewerNavigation';
 import { placeGroupRepository } from '@/core/repositories/placeGroupRepository';
 import { canEdit } from '@/features/memoryNotes/utils/permissions';
 import type {
@@ -382,6 +383,9 @@ export default function NoteMapScreen() {
     null;
   const selectedGroupIdx = selectedGroup ? groupsWithLocation.indexOf(selectedGroup) : -1;
 
+  // UI-8: photoIds がある場合のみ grouped viewer を開ける
+  const canViewGroupPhotos = selectedGroup ? canOpenGroupedPhotoViewer(selectedGroup) : false;
+
   // 選択グループの関連写真
   const groupPhotoURLs: string[] = selectedGroup
     ? selectedGroup.photoIds && selectedGroup.photoIds.length > 0
@@ -618,19 +622,23 @@ export default function NoteMapScreen() {
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.photoStrip}
             >
-              {groupPhotoURLs.map((url, idx) => (
-                <TouchableOpacity
-                  key={idx}
-                  activeOpacity={0.85}
-                  onPress={() =>
-                    router.push(
-                      `/(app)/notes/${noteId}/photos/viewer?initialIndex=${idx}&placeGroupId=${selectedGroup?.id}` as any
-                    )
-                  }
-                >
-                  <Image source={{ uri: url }} style={styles.photoThumb} resizeMode="cover" />
-                </TouchableOpacity>
-              ))}
+              {groupPhotoURLs.map((url, idx) =>
+                canViewGroupPhotos ? (
+                  <TouchableOpacity
+                    key={idx}
+                    activeOpacity={0.85}
+                    onPress={() =>
+                      router.push(
+                        `/(app)/notes/${noteId}/photos/viewer?initialIndex=${idx}&placeGroupId=${selectedGroup?.id}` as any
+                      )
+                    }
+                  >
+                    <Image source={{ uri: url }} style={styles.photoThumb} resizeMode="cover" />
+                  </TouchableOpacity>
+                ) : (
+                  <Image key={idx} source={{ uri: url }} style={[styles.photoThumb, styles.photoThumbFallback]} resizeMode="cover" />
+                )
+              )}
             </ScrollView>
           </View>
         ) : null}
@@ -1123,6 +1131,10 @@ const styles = StyleSheet.create({
     height: 90,
     borderRadius: borderRadius.lg,
     backgroundColor: colors.border,
+  },
+  // UI-8: fallback 写真は viewer を開かないため少し opacity を下げる
+  photoThumbFallback: {
+    opacity: 0.75,
   },
 
   // Compact timeline

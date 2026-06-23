@@ -35,6 +35,7 @@ import { useNotePhotos } from '@/features/photos/hooks/useNotePhotos';
 import { usePlaceGroups } from '@/features/placeIntelligence/hooks/usePlaceGroups';
 import { canEdit } from '@/features/memoryNotes/utils/permissions';
 import { updatePlaceGroupManuallyCallable } from '@/features/placeIntelligence/api/placeFunctionsClient';
+import { canOpenGroupedPhotoViewer } from '@/features/photos/utils/photoViewerNavigation';
 import type { PlaceGroupDoc } from '@/features/map/types';
 
 // ── ヘルパー ──────────────────────────────────────────────────────────────────
@@ -103,6 +104,9 @@ export default function FlowDetailScreen() {
   const heroPhotoURL =
     flowPhotos[0]?.downloadURL ?? group?.coverPhotoURL ?? null;
   const stripPhotos = flowPhotos.slice(1, 6);
+
+  // UI-8: photoIds がある場合のみ grouped viewer を開ける
+  const hasGroupPhotoIds = group ? canOpenGroupedPhotoViewer(group) : false;
 
   // group.eventMemo が外部から更新されたら memoText を同期 (編集中は上書きしない)
   useEffect(() => {
@@ -182,20 +186,28 @@ export default function FlowDetailScreen() {
         {/* ── Section 1: Hero Photo ── */}
         <View style={styles.heroContainer}>
           {heroPhotoURL ? (
-            <TouchableOpacity
-              activeOpacity={0.92}
-              onPress={() =>
-                router.push(
-                  `/(app)/notes/${noteId}/photos/viewer?initialIndex=0&placeGroupId=${placeGroupId}` as any
-                )
-              }
-            >
+            hasGroupPhotoIds ? (
+              <TouchableOpacity
+                activeOpacity={0.92}
+                onPress={() =>
+                  router.push(
+                    `/(app)/notes/${noteId}/photos/viewer?initialIndex=0&placeGroupId=${placeGroupId}` as any
+                  )
+                }
+              >
+                <Image
+                  source={{ uri: heroPhotoURL }}
+                  style={styles.heroImage}
+                  resizeMode="cover"
+                />
+              </TouchableOpacity>
+            ) : (
               <Image
                 source={{ uri: heroPhotoURL }}
                 style={styles.heroImage}
                 resizeMode="cover"
               />
-            </TouchableOpacity>
+            )
           ) : (
             <View style={styles.heroPlaceholder}>
               <Text style={styles.heroPlaceholderEmoji}>🏞️</Text>
@@ -206,23 +218,32 @@ export default function FlowDetailScreen() {
           {/* サポーティング写真ストリップ (hero の下) */}
           {stripPhotos.length > 0 ? (
             <View style={styles.stripRow}>
-              {stripPhotos.map((photo, idx) => (
-                <TouchableOpacity
-                  key={photo.id}
-                  activeOpacity={0.85}
-                  onPress={() =>
-                    router.push(
-                      `/(app)/notes/${noteId}/photos/viewer?initialIndex=${idx + 1}&placeGroupId=${placeGroupId}` as any
-                    )
-                  }
-                >
+              {stripPhotos.map((photo, idx) =>
+                hasGroupPhotoIds ? (
+                  <TouchableOpacity
+                    key={photo.id}
+                    activeOpacity={0.85}
+                    onPress={() =>
+                      router.push(
+                        `/(app)/notes/${noteId}/photos/viewer?initialIndex=${idx + 1}&placeGroupId=${placeGroupId}` as any
+                      )
+                    }
+                  >
+                    <Image
+                      source={{ uri: photo.downloadURL }}
+                      style={styles.stripThumb}
+                      resizeMode="cover"
+                    />
+                  </TouchableOpacity>
+                ) : (
                   <Image
+                    key={photo.id}
                     source={{ uri: photo.downloadURL }}
-                    style={styles.stripThumb}
+                    style={[styles.stripThumb, styles.stripThumbFallback]}
                     resizeMode="cover"
                   />
-                </TouchableOpacity>
-              ))}
+                )
+              )}
               {flowPhotos.length > 6 ? (
                 <View style={styles.stripMore}>
                   <Text style={styles.stripMoreText}>+{flowPhotos.length - 6}</Text>
@@ -476,6 +497,10 @@ const styles = StyleSheet.create({
     height: 60,
     borderRadius: borderRadius.md,
     backgroundColor: colors.border,
+  },
+  // UI-8: fallback 写真は viewer を開かないため少し opacity を下げる
+  stripThumbFallback: {
+    opacity: 0.75,
   },
   stripMore: {
     width: 60,
