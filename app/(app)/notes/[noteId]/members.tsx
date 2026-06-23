@@ -95,7 +95,7 @@ export default function NoteMembersScreen() {
 
   const { note, isLoading: noteLoading } = useNoteDetail(noteId ?? null);
   const { members, isLoading: membersLoading } = useNoteMembers(note);
-  const { addMember, updateRole, removeMember, isLoading: managing, error, clearError } = useManageNoteMembers();
+  const { addMember, updateRole, removeMember, leaveNote, isLoading: managing, error, clearError } = useManageNoteMembers();
 
   const [addEmail, setAddEmail] = useState('');
   const [addRole, setAddRole] = useState<'editor' | 'viewer'>('editor');
@@ -158,6 +158,31 @@ export default function NoteMembersScreen() {
           onPress: async () => {
             try {
               await removeMember(noteId, targetUid);
+            } catch {
+              // error は hook の state に格納済み
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // UI-14: ノート退出
+  const handleLeaveNote = () => {
+    if (!noteId || !uid) return;
+    clearError();
+    Alert.alert(
+      'このノートから退出しますか？',
+      '退出すると、この思い出ノートを閲覧できなくなります。',
+      [
+        { text: 'キャンセル', style: 'cancel' },
+        {
+          text: '退出する',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await leaveNote(noteId);
+              router.replace('/(app)/home' as any);
             } catch {
               // error は hook の state に格納済み
             }
@@ -432,7 +457,33 @@ export default function NoteMembersScreen() {
           </View>
         )}
 
-        {/* ── Section 4: Role Guide ── */}
+        {/* ── Section 4: Leave Note (UI-14) — 非owner・共有ノートのみ表示 ── */}
+        {!isOwner && note.noteType === 'shared' && uid ? (
+          <View style={styles.section}>
+            <View style={styles.leaveCard}>
+              <View style={styles.leaveCardBody}>
+                <Text style={styles.leaveCardTitle}>このノートから退出</Text>
+                <Text style={styles.leaveCardDesc}>
+                  退出すると、この思い出ノートを閲覧できなくなります。
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.leaveButton, managing && styles.buttonDisabled]}
+                onPress={handleLeaveNote}
+                disabled={managing}
+                activeOpacity={0.8}
+              >
+                {managing ? (
+                  <ActivityIndicator size="small" color={colors.error} />
+                ) : (
+                  <Text style={styles.leaveButtonText}>このノートから退出する</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : null}
+
+        {/* ── Section 5: Role Guide ── */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>権限について</Text>
           <View style={styles.roleGuideCard}>
@@ -958,6 +1009,45 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.textSecondary,
     lineHeight: 20,
+  },
+
+  // ── UI-14: Leave Note ───────────────────────────────────────────────────
+
+  leaveCard: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.xl,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    padding: 16,
+    gap: 14,
+  },
+  leaveCardBody: {
+    gap: 6,
+  },
+  leaveCardTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  leaveCardDesc: {
+    fontSize: 13,
+    color: colors.textTertiary,
+    lineHeight: 20,
+  },
+  leaveButton: {
+    paddingVertical: 13,
+    borderRadius: borderRadius.xl,
+    borderWidth: 1.5,
+    borderColor: colors.error,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+    minHeight: 48,
+  },
+  leaveButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.error,
   },
 
   // ── UI-13: Role Selector Modal ──────────────────────────────────────────

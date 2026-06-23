@@ -460,6 +460,64 @@ export {
   deleteNoteRouteCache,
 } from './route/routeFunctions';
 
+// ── UI-15: leaveNote ─────────────────────────────────────────────────────────
+// 非 owner ユーザー（editor / viewer）が自分自身を共有ノートから退出する。
+// removeNoteMember とは異なり、caller が owner である必要はなく、
+// 自分自身の members エントリのみを削除できる。
+
+export const leaveNote = onCall(
+  { region: 'asia-northeast1' },
+  async (request) => {
+    // 1. 認証チェック
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', '認証が必要です');
+    }
+    const uid = request.auth.uid;
+
+    // 2. noteId バリデーション
+    const data = request.data as { noteId?: unknown };
+    if (typeof data.noteId !== 'string' || !data.noteId.trim()) {
+      throw new HttpsError('invalid-argument', 'noteId が必要です');
+    }
+    const noteId = data.noteId.trim();
+
+    const db = admin.firestore();
+    const noteRef = db.doc(`memory_notes/${noteId}`);
+    const noteSnap = await noteRef.get();
+
+    // 3. ノート存在確認
+    if (!noteSnap.exists) {
+      throw new HttpsError('not-found', 'ノートが見つかりません');
+    }
+
+    const noteData = noteSnap.data()!;
+    const ownerId = noteData.ownerId as string | undefined;
+    const members = noteData.members as Record<string, string> | undefined;
+
+    // 4. owner は退出不可
+    if (ownerId === uid) {
+      throw new HttpsError('permission-denied', 'オーナーは退出できません');
+    }
+
+    // 5. caller がメンバーに含まれているか確認
+    if (!members || !(uid in members)) {
+      throw new HttpsError('not-found', 'このノートのメンバーではありません');
+    }
+
+    // 6. 自分自身の members エントリのみを削除
+    await noteRef.update({
+      [`members.${uid}`]: admin.firestore.FieldValue.delete(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    console.log(
+      `[leaveNote] noteId=${noteId} uid=***${uid.slice(-4)}`
+    );
+
+    return { success: true };
+  }
+);
+
 export const removeNoteMember = onCall(
   { region: 'asia-northeast1' },
   async (request) => {

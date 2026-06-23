@@ -12,6 +12,8 @@ export interface UseManageNoteMembersResult {
   addMember: (noteId: string, email: string, role: 'editor' | 'viewer') => Promise<void>;
   updateRole: (noteId: string, targetUid: string, role: 'editor' | 'viewer') => Promise<void>;
   removeMember: (noteId: string, targetUid: string) => Promise<void>;
+  /** UI-15: 自分自身でノートから退出する。leaveNote Cloud Function を呼ぶ。 */
+  leaveNote: (noteId: string) => Promise<void>;
   isLoading: boolean;
   error: string | null;
   clearError: () => void;
@@ -82,10 +84,26 @@ export function useManageNoteMembers(): UseManageNoteMembersResult {
     }
   };
 
+  // UI-15: 自分自身のノート退出。leaveNote Cloud Function を呼ぶ。
+  const leaveNote = async (noteId: string): Promise<void> => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      await memberRepository.leaveNote(noteId);
+    } catch (e) {
+      const msg = toUserMessage(e, 'ノートからの退出に失敗しました。もう一度お試しください。');
+      setError(msg);
+      throw new Error(msg);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return {
     addMember,
     updateRole,
     removeMember,
+    leaveNote,
     isLoading,
     error,
     clearError: () => setError(null),

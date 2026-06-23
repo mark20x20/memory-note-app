@@ -93,8 +93,23 @@ export const memberRepository = {
     );
     await fn({ noteId, targetUid });
   },
+
+  /**
+   * UI-15: 自分自身でノートから退出する。
+   * editor / viewer が自分の uid のみを members から削除する。
+   * owner は Functions 側で拒否される。
+   */
+  async leaveNote(noteId: string): Promise<void> {
+    if (!functions) throw new Error('Firebase Functions not configured');
+    const fn = httpsCallable<{ noteId: string }, { success: boolean }>(
+      functions,
+      'leaveNote'
+    );
+    await fn({ noteId });
+  },
 } satisfies {
   addMemberByEmail: (noteId: string, email: string, role: Exclude<MemberRole, 'owner'>) => Promise<AddMemberResponse>;
   updateMemberRole: (noteId: string, targetUid: string, role: Exclude<MemberRole, 'owner'>) => Promise<void>;
   removeMember: (noteId: string, targetUid: string) => Promise<void>;
+  leaveNote: (noteId: string) => Promise<void>;
 };
