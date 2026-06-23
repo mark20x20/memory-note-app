@@ -27,7 +27,8 @@ import { useNoteEditDraft } from '@/features/memoryNotes/hooks/useNoteEditDraft'
 import { useNotePhotos } from '@/features/photos/hooks/useNotePhotos';
 import { useDeleteNote } from '@/features/memoryNotes/hooks/useDeleteNote';
 import { usePlaceGroups } from '@/features/placeIntelligence/hooks/usePlaceGroups';
-import { canEdit, canDelete } from '@/features/memoryNotes/utils/permissions';
+import { canEdit, canDelete, canGenerateAiDiary } from '@/features/memoryNotes/utils/permissions';
+import { useGenerateDiary } from '@/features/memoryNotes/hooks/useGenerateDiary';
 import type { EditTabKey } from '@/features/memoryNotes/types/edit';
 import { OverviewPanel } from '@/features/memoryNotes/components/edit/panels/OverviewPanel';
 import { PhotosPanel } from '@/features/memoryNotes/components/edit/panels/PhotosPanel';
@@ -63,6 +64,7 @@ export default function NoteEditScreen() {
 
   const { photos, isLoading: photosLoading } = useNotePhotos(noteId ?? null);
   const { deleteNote, isDeleting, error: deleteError } = useDeleteNote();
+  const { generate: generateDiary, isGenerating: isGeneratingDiary, error: generateDiaryError } = useGenerateDiary();
   const { groups: placeGroups, isLoading: groupsLoading } = usePlaceGroups(noteId ?? null);
 
   // タブ state
@@ -71,12 +73,9 @@ export default function NoteEditScreen() {
   // 権限チェック
   const userCanEdit = uid && note ? canEdit(note, uid) : false;
   const userCanDelete = uid && note ? canDelete(note, uid) : false;
+  const userCanGenerateAiDiary = uid && note ? canGenerateAiDiary(note, uid) : false;
 
   const isBusy = isSaving || isDeleting;
-
-  const hasAiDiary =
-    note?.aiDiaryStatus === 'completed' ||
-    note?.aiDiaryStatus === 'edited';
 
   const handleSave = async () => {
     if (!userCanEdit) return;
@@ -239,8 +238,12 @@ export default function NoteEditScreen() {
             <MemoPanel
               draft={draft}
               updateField={updateField}
-              hasAiDiary={hasAiDiary}
+              aiDiaryStatus={note.aiDiaryStatus ?? null}
               isBusy={isBusy}
+              canGenerate={!!userCanGenerateAiDiary}
+              onGenerateDiary={noteId ? () => generateDiary(noteId) : undefined}
+              isGeneratingDiary={isGeneratingDiary}
+              generateDiaryError={generateDiaryError}
             />
           )}
 
