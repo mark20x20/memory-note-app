@@ -27,18 +27,16 @@ export default function HomeScreen() {
       <View style={styles.header}>
         <View>
           <Text style={styles.headerTitle}>思い出ノート</Text>
-          <Text style={styles.headerSubtitle}>あなたの大切な記録</Text>
+          <Text style={styles.headerSubtitle}>写真から、旅やおでかけを振り返ろう</Text>
         </View>
-        <View style={styles.headerRight}>
-          <TouchableOpacity
-            style={styles.iconButton}
-            onPress={() => router.push('/(app)/settings')}
-            hitSlop={8}
-            accessibilityLabel="設定"
-          >
-            <Text style={styles.iconButtonText}>⚙</Text>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity
+          style={styles.iconButton}
+          onPress={() => router.push('/(app)/settings')}
+          hitSlop={8}
+          accessibilityLabel="設定"
+        >
+          <Text style={styles.iconButtonText}>⚙</Text>
+        </TouchableOpacity>
       </View>
 
       {isLoading ? (
@@ -53,20 +51,27 @@ export default function HomeScreen() {
           <Text style={styles.errorDetail}>{error.message}</Text>
         </View>
       ) : isEmpty ? (
-        <ScrollView contentContainerStyle={styles.emptyScroll} showsVerticalScrollIndicator={false}>
-          {/* Empty state hero */}
+        /* Empty state */
+        <ScrollView
+          contentContainerStyle={styles.emptyScroll}
+          showsVerticalScrollIndicator={false}
+        >
           <View style={styles.emptyHero}>
-            <Text style={styles.emptyEmoji}>📷</Text>
-            <Text style={styles.emptyTitle}>まだノートがありません</Text>
+            <View style={styles.emptyPhotoFrame}>
+              <Text style={styles.emptyPhotoEmoji}>📷</Text>
+            </View>
+            <Text style={styles.emptyTitle}>
+              最初の思い出ノートを{'\n'}作りましょう
+            </Text>
             <Text style={styles.emptyDescription}>
-              タイトルとメモを入力するだけで{'\n'}思い出ノートが作れます
+              旅やおでかけの写真を選ぶだけで{'\n'}場所・時間・思い出を整理できます
             </Text>
             <TouchableOpacity
-              style={styles.createButton}
+              style={styles.emptyCreateButton}
               onPress={() => router.push('/(app)/create')}
               activeOpacity={0.85}
             >
-              <Text style={styles.createButtonText}>＋　最初の思い出を作る</Text>
+              <Text style={styles.emptyCreateButtonText}>📷　写真から作る</Text>
             </TouchableOpacity>
           </View>
 
@@ -74,16 +79,37 @@ export default function HomeScreen() {
           <View style={styles.hintsSection}>
             <Text style={styles.hintsSectionTitle}>できること</Text>
             <View style={styles.hintCard}>
-              <FeatureHint emoji="🗺" title="地図で振り返る" description="訪れた場所がマップ上に並びます" />
+              <FeatureHint
+                emoji="🗺"
+                title="地図で振り返る"
+                description="訪れた場所がマップ上に並びます"
+              />
               <HintDivider />
-              <FeatureHint emoji="🤝" title="一緒に作る" description="家族や友人とノートを共有できます" />
+              <FeatureHint
+                emoji="🤝"
+                title="一緒に作る"
+                description="家族や友人とノートを共有できます"
+              />
               <HintDivider />
-              <FeatureHint emoji="📤" title="SNSにシェア" description="美しい共有カードで思い出を伝えます" />
+              <FeatureHint
+                emoji="📤"
+                title="SNSにシェア"
+                description="美しい共有カードで思い出を伝えます"
+              />
             </View>
           </View>
         </ScrollView>
       ) : (
-        <ScrollView contentContainerStyle={styles.listScroll} showsVerticalScrollIndicator={false}>
+        /* Note list */
+        <ScrollView
+          contentContainerStyle={styles.listScroll}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Primary CTA Card */}
+          <CreateCtaCard />
+
+          {/* Recent memories */}
+          <Text style={styles.sectionTitle}>最近の思い出</Text>
           {notes.map((note) => (
             <NoteCard
               key={note.id}
@@ -109,12 +135,38 @@ export default function HomeScreen() {
   );
 }
 
+function CreateCtaCard() {
+  return (
+    <TouchableOpacity
+      style={styles.ctaCard}
+      onPress={() => router.push('/(app)/create')}
+      activeOpacity={0.88}
+    >
+      <View style={styles.ctaCardInner}>
+        <Text style={styles.ctaCardEmoji}>📔</Text>
+        <View style={styles.ctaCardTextBlock}>
+          <Text style={styles.ctaCardTitle}>新しい思い出を作る</Text>
+          <Text style={styles.ctaCardDescription}>
+            写真を選んで、場所・流れ・日記をまとめましょう
+          </Text>
+        </View>
+      </View>
+      <View style={styles.ctaCardButton}>
+        <Text style={styles.ctaCardButtonText}>ノートを作る</Text>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
 function NoteCard({ note, onPress }: { note: NoteDoc; onPress: () => void }) {
   const dateStr = note.createdAt?.toDate ? formatDate(note.createdAt.toDate()) : null;
+  const placeLabel = note.visitedPlacesSummary?.topPlaceLabels?.[0] ?? null;
+  const displayTitle = note.title.trim() || '無題の思い出';
 
   return (
     <TouchableOpacity style={styles.noteCard} onPress={onPress} activeOpacity={0.85}>
-      <View style={styles.noteCardCover}>
+      {/* Cover photo */}
+      <View style={styles.noteCardCoverWrap}>
         {note.coverPhotoURL ? (
           <Image
             source={{ uri: note.coverPhotoURL }}
@@ -122,33 +174,68 @@ function NoteCard({ note, onPress }: { note: NoteDoc; onPress: () => void }) {
             resizeMode="cover"
           />
         ) : (
-          <Text style={styles.noteCardCoverEmoji}>📷</Text>
+          <View style={styles.noteCardCoverPlaceholder}>
+            <Text style={styles.noteCardCoverEmoji}>📷</Text>
+          </View>
+        )}
+        {/* Shared badge overlay */}
+        {note.noteType === 'shared' && (
+          <View style={styles.sharedBadge}>
+            <Text style={styles.sharedBadgeText}>🤝 共有</Text>
+          </View>
         )}
       </View>
-      {/* Content */}
+
+      {/* Card content */}
       <View style={styles.noteCardContent}>
-        <Text style={styles.noteCardTitle} numberOfLines={2}>{note.title}</Text>
-        {note.memo ? (
-          <Text style={styles.noteCardMemo} numberOfLines={2}>{note.memo}</Text>
-        ) : null}
-        <View style={styles.noteCardChips}>
+        <Text style={styles.noteCardTitle} numberOfLines={2}>
+          {displayTitle}
+        </Text>
+
+        {/* Meta chips */}
+        <View style={styles.noteCardMeta}>
           {dateStr ? (
-            <View style={styles.chip}>
-              <Text style={styles.chipText}>📅 {dateStr}</Text>
+            <View style={styles.metaChip}>
+              <Text style={styles.metaChipText}>📅 {dateStr}</Text>
             </View>
           ) : null}
-          {note.noteType === 'shared' ? (
-            <View style={[styles.chip, styles.chipShared]}>
-              <Text style={[styles.chipText, styles.chipSharedText]}>🤝 共有</Text>
+          {placeLabel ? (
+            <View style={[styles.metaChip, styles.metaChipPlace]}>
+              <Text
+                style={[styles.metaChipText, styles.metaChipPlaceText]}
+                numberOfLines={1}
+              >
+                📍 {placeLabel}
+              </Text>
             </View>
           ) : null}
         </View>
+
+        {/* Memo excerpt */}
+        {note.memo ? (
+          <Text style={styles.noteCardMemo} numberOfLines={2}>
+            {note.memo}
+          </Text>
+        ) : null}
+
+        {/* Photo count */}
+        {note.photoCount ? (
+          <Text style={styles.noteCardPhotoCount}>📷 {note.photoCount}枚</Text>
+        ) : null}
       </View>
     </TouchableOpacity>
   );
 }
 
-function FeatureHint({ emoji, title, description }: { emoji: string; title: string; description: string }) {
+function FeatureHint({
+  emoji,
+  title,
+  description,
+}: {
+  emoji: string;
+  title: string;
+  description: string;
+}) {
   return (
     <View style={styles.featureHint}>
       <Text style={styles.featureHintEmoji}>{emoji}</Text>
@@ -169,6 +256,8 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+
+  // ── Header ──────────────────────────────────────
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -191,11 +280,6 @@ const styles = StyleSheet.create({
     color: colors.textTertiary,
     marginTop: 2,
   },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
   iconButton: {
     width: 40,
     height: 40,
@@ -207,7 +291,8 @@ const styles = StyleSheet.create({
   iconButtonText: {
     fontSize: 18,
   },
-  // Loading
+
+  // ── Loading ──────────────────────────────────────
   loadingContainer: {
     flex: 1,
     alignItems: 'center',
@@ -218,7 +303,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textTertiary,
   },
-  // Error
+
+  // ── Error ──────────────────────────────────────
   errorContainer: {
     flex: 1,
     alignItems: 'center',
@@ -241,9 +327,10 @@ const styles = StyleSheet.create({
     color: colors.textTertiary,
     textAlign: 'center',
   },
-  // Empty state
+
+  // ── Empty state ──────────────────────────────────────
   emptyScroll: {
-    paddingBottom: 40,
+    paddingBottom: 48,
   },
   emptyHero: {
     alignItems: 'center',
@@ -251,9 +338,19 @@ const styles = StyleSheet.create({
     paddingTop: 56,
     paddingBottom: 48,
   },
-  emptyEmoji: {
-    fontSize: 72,
-    marginBottom: 24,
+  emptyPhotoFrame: {
+    width: 120,
+    height: 120,
+    borderRadius: 28,
+    backgroundColor: colors.surfaceIvory,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 28,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  emptyPhotoEmoji: {
+    fontSize: 52,
   },
   emptyTitle: {
     fontSize: 22,
@@ -262,6 +359,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 12,
     letterSpacing: -0.3,
+    lineHeight: 32,
   },
   emptyDescription: {
     fontSize: 15,
@@ -270,7 +368,7 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     marginBottom: 36,
   },
-  createButton: {
+  emptyCreateButton: {
     backgroundColor: colors.primary,
     borderRadius: 16,
     paddingVertical: 16,
@@ -281,13 +379,14 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
   },
-  createButtonText: {
+  emptyCreateButtonText: {
     color: colors.textInverse,
     fontSize: 17,
     fontWeight: '700',
     letterSpacing: 0.2,
   },
-  // Feature hints
+
+  // ── Feature hints ──────────────────────────────────────
   hintsSection: {
     paddingHorizontal: 20,
   },
@@ -337,79 +436,151 @@ const styles = StyleSheet.create({
     backgroundColor: colors.border,
     marginLeft: 66,
   },
-  // Note list
+
+  // ── Note list scroll ──────────────────────────────────────
   listScroll: {
     paddingHorizontal: 20,
-    paddingTop: 16,
+    paddingTop: 20,
     paddingBottom: 100,
     gap: 12,
   },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textTertiary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginTop: 4,
+    marginBottom: 4,
+  },
+
+  // ── Primary CTA Card ──────────────────────────────────────
+  ctaCard: {
+    backgroundColor: colors.surfaceWarm,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 16,
+    gap: 12,
+  },
+  ctaCardInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  ctaCardEmoji: {
+    fontSize: 36,
+  },
+  ctaCardTextBlock: {
+    flex: 1,
+  },
+  ctaCardTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginBottom: 4,
+  },
+  ctaCardDescription: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    lineHeight: 19,
+  },
+  ctaCardButton: {
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  ctaCardButtonText: {
+    color: colors.textInverse,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+
+  // ── Note Card (photo-first) ──────────────────────────────────────
   noteCard: {
-    height: 152,
     backgroundColor: colors.surface,
-    borderRadius: 16,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: colors.border,
     overflow: 'hidden',
-    flexDirection: 'row',
   },
-  noteCardCover: {
-    width: 152,
-    height: '100%',
-    overflow: 'hidden',
+  noteCardCoverWrap: {
+    height: 180,
     backgroundColor: colors.surfaceIvory,
-    alignItems: 'center',
-    justifyContent: 'center',
+    position: 'relative',
   },
   noteCardCoverImage: {
     width: '100%',
     height: '100%',
   },
+  noteCardCoverPlaceholder: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   noteCardCoverEmoji: {
-    fontSize: 28,
+    fontSize: 40,
+  },
+  sharedBadge: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    backgroundColor: colors.mapAccentLight,
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  sharedBadgeText: {
+    fontSize: 12,
+    color: colors.mapAccent,
+    fontWeight: '600',
   },
   noteCardContent: {
-    flex: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
+    padding: 14,
     gap: 6,
-    overflow: 'hidden',
   },
   noteCardTitle: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 17,
+    fontWeight: '700',
     color: colors.textPrimary,
-    lineHeight: 22,
+    lineHeight: 24,
   },
-  noteCardMemo: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    lineHeight: 18,
-  },
-  noteCardChips: {
+  noteCardMeta: {
     flexDirection: 'row',
     gap: 6,
-    marginTop: 4,
     flexWrap: 'wrap',
   },
-  chip: {
+  metaChip: {
     backgroundColor: colors.surfaceIvory,
     borderRadius: 20,
     paddingHorizontal: 10,
     paddingVertical: 4,
   },
-  chipText: {
+  metaChipText: {
     fontSize: 12,
     color: colors.textSecondary,
     fontWeight: '500',
   },
-  chipShared: {
+  metaChipPlace: {
     backgroundColor: colors.mapAccentLight,
+    maxWidth: 160,
   },
-  chipSharedText: {
+  metaChipPlaceText: {
     color: colors.mapAccent,
   },
-  // FAB
+  noteCardMemo: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    lineHeight: 19,
+  },
+  noteCardPhotoCount: {
+    fontSize: 12,
+    color: colors.textTertiary,
+    marginTop: 2,
+  },
+
+  // ── FAB ──────────────────────────────────────
   fab: {
     position: 'absolute',
     bottom: 32,
