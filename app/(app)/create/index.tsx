@@ -11,7 +11,6 @@ import {
   Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ScreenHeader } from '@/shared/components/ui';
 import { colors } from '@/shared/theme/colors';
 import { useCreateNote } from '@/features/memoryNotes/hooks/useCreateNote';
 import { usePhotoPicker } from '@/features/photos/hooks/usePhotoPicker';
@@ -19,24 +18,21 @@ import { usePhotoUpload } from '@/features/photos/hooks/usePhotoUpload';
 import { noteRepository } from '@/core/repositories/noteRepository';
 import { useAuth } from '@/core/auth/AuthContext';
 
-const CREATION_STEPS = [
+const AUTO_ORGANIZE_ITEMS = [
   {
-    step: 1,
-    emoji: '📷',
-    title: '写真を選ぶ',
-    description: 'カメラロールから複数枚選択。GPS情報があれば自動で地図に配置されます。',
+    emoji: '🗺️',
+    title: '場所と流れを整理',
+    desc: '写真のGPS情報から、その日の動きを自動で並べます',
   },
   {
-    step: 2,
-    emoji: '🤖',
-    title: 'AIが整理する',
-    description: '日付・場所・タイトルを自動生成。内容は後から編集できます。',
+    emoji: '✏️',
+    title: 'AI日記の下書き',
+    desc: '写真とメモをもとに、自然な日記の下書きを作ります',
   },
   {
-    step: 3,
-    emoji: '📖',
-    title: 'ノートが完成',
-    description: '写真・地図・日記がひとまとめに。友達や家族と共有もできます。',
+    emoji: '📤',
+    title: '共有カードを作成',
+    desc: '思い出を友達や家族と美しいカードでシェアできます',
   },
 ] as const;
 
@@ -67,39 +63,35 @@ export default function CreateScreen() {
     resetUploadState,
   } = usePhotoUpload();
 
-  /** ノート作成済みの場合のID（アップロード失敗時のリカバリ用） */
   const [createdNoteId, setCreatedNoteId] = useState<string | null>(null);
 
   const hasPhotos = photos.length > 0;
   const isProcessing = isSaving || isUploading;
+  const canCreate = !!title.trim() && !isProcessing;
 
   async function handleSave() {
     if (!uid) return;
     resetUploadState();
     setCreatedNoteId(null);
 
-    // Step 1: Firestore にノートを作成
     const noteId = await saveNote(uid);
-    if (!noteId) return; // saveNote が error をセット済み
+    if (!noteId) return;
 
     setCreatedNoteId(noteId);
 
-    // Step 2: 写真があればアップロード
     if (photos.length > 0) {
       const uploaded = await uploadPhotos({ uid, noteId, photos });
 
       if (uploaded && uploaded.length > 0) {
-        // Step 3: ノートに代表写真URLと枚数を保存（失敗しても続行）
         try {
           await noteRepository.updateCoverPhoto(noteId, {
             coverPhotoURL: uploaded[0].downloadURL,
             photoCount: uploaded.length,
           });
         } catch {
-          // 非クリティカル — Detail は表示できる
+          // non-critical
         }
       } else {
-        // アップロード失敗: エラーUI を表示し、ユーザーが手動でナビゲート
         return;
       }
     }
@@ -109,123 +101,171 @@ export default function CreateScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      <ScreenHeader
-        title="新しい思い出を作る"
-        onBack={() => router.back()}
-      />
+      {/* ── Warm custom header ── */}
+      <View style={styles.header}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => router.back()}
+          hitSlop={8}
+          accessibilityLabel="戻る"
+        >
+          <Text style={styles.backButtonText}>←</Text>
+        </TouchableOpacity>
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerTitle}>思い出ノートを作る</Text>
+          <Text style={styles.headerSubtitle}>
+            写真を選ぶだけで、場所・流れ・日記をまとめます
+          </Text>
+        </View>
+        <View style={styles.headerRight} />
+      </View>
 
       <ScrollView
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* ── Hero (写真未選択時のみ) ── */}
-        {!hasPhotos && (
-          <View style={styles.hero}>
-            <Text style={styles.heroEmoji}>📸</Text>
-            <Text style={styles.heroTitle}>写真を選んで{'\n'}思い出ノートを作ろう</Text>
-            <Text style={styles.heroDescription}>
-              写真を選ぶだけで、日付・場所・AIコメント付きの思い出ノートが自動で作れます
-            </Text>
-          </View>
-        )}
-
-        {/* ── 3ステップカード (写真未選択時のみ) ── */}
-        {!hasPhotos && (
-          <View style={styles.stepsSection}>
-            <Text style={styles.sectionLabel}>作成の流れ</Text>
-            <View style={styles.stepsCard}>
-              {CREATION_STEPS.map((item, index) => (
-                <View key={item.step}>
-                  <View style={styles.stepRow}>
-                    <View style={styles.stepNumberBadge}>
-                      <Text style={styles.stepNumberText}>{item.step}</Text>
-                    </View>
-                    <Text style={styles.stepEmoji}>{item.emoji}</Text>
-                    <View style={styles.stepContent}>
-                      <Text style={styles.stepTitle}>{item.title}</Text>
-                      <Text style={styles.stepDescription}>{item.description}</Text>
-                    </View>
-                  </View>
-                  {index < CREATION_STEPS.length - 1 && (
-                    <View style={styles.stepConnector} />
-                  )}
+        {/* ── Photo Hero Card ── */}
+        <View style={styles.photoSection}>
+          {hasPhotos ? (
+            /* Photos selected: featured cover + strip */
+            <View style={styles.photoCoverCard}>
+              {/* Featured first photo */}
+              <View style={styles.photoCoverWrap}>
+                <Image
+                  source={{ uri: photos[0].uri }}
+                  style={styles.photoCoverImage}
+                  resizeMode="cover"
+                />
+                {/* Count badge */}
+                <View style={styles.photoCountBadge}>
+                  <Text style={styles.photoCountBadgeText}>
+                    📷 {photos.length}枚選択中
+                  </Text>
                 </View>
-              ))}
-            </View>
-          </View>
-        )}
+              </View>
 
-        {/* ── 選択済み写真サムネイル ── */}
-        {hasPhotos && (
-          <View style={styles.selectedPhotosSection}>
-            <View style={styles.photoCountRow}>
-              <View style={styles.photoCountChip}>
-                <Text style={styles.photoCountText}>📷 {photos.length}枚選択中</Text>
+              {/* Remaining photos strip */}
+              {photos.length > 1 && (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.photoStrip}
+                >
+                  {photos.slice(1).map((photo) => (
+                    <View key={photo.id} style={styles.photoStripItem}>
+                      <Image
+                        source={{ uri: photo.uri }}
+                        style={styles.photoStripImage}
+                        resizeMode="cover"
+                      />
+                      <TouchableOpacity
+                        style={styles.removeButton}
+                        onPress={() => removePhoto(photo.id)}
+                        hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                      >
+                        <Text style={styles.removeButtonText}>×</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </ScrollView>
+              )}
+
+              {/* Add more photos button */}
+              <View style={styles.photoAddButtonWrap}>
+                <TouchableOpacity
+                  style={[
+                    styles.photoAddButton,
+                    (isPicking || isProcessing) && styles.photoButtonDisabled,
+                  ]}
+                  onPress={pickPhotos}
+                  disabled={isPicking || isProcessing}
+                  activeOpacity={0.85}
+                >
+                  {isPicking ? (
+                    <ActivityIndicator color={colors.primary} size="small" />
+                  ) : (
+                    <Text style={styles.photoAddButtonText}>＋ 写真を追加する</Text>
+                  )}
+                </TouchableOpacity>
               </View>
             </View>
-            <View style={styles.thumbnailScrollContainer}>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.thumbnailList}
-              >
-                {photos.map((photo) => (
-                  <View key={photo.id} style={styles.thumbnailWrapper}>
-                    <Image
-                      source={{ uri: photo.uri }}
-                      style={styles.thumbnail}
-                      resizeMode="cover"
-                    />
-                    <TouchableOpacity
-                      style={styles.removeButton}
-                      onPress={() => removePhoto(photo.id)}
-                      hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-                    >
-                      <Text style={styles.removeButtonText}>×</Text>
-                    </TouchableOpacity>
+          ) : (
+            /* No photos: large tappable hero card */
+            <TouchableOpacity
+              style={[
+                styles.photoEmptyCard,
+                (isPicking || isProcessing) && styles.photoButtonDisabled,
+              ]}
+              onPress={pickPhotos}
+              disabled={isPicking || isProcessing}
+              activeOpacity={0.88}
+            >
+              {isPicking ? (
+                <ActivityIndicator color={colors.primary} size="large" />
+              ) : (
+                <>
+                  <View style={styles.photoEmptyIconWrap}>
+                    <Text style={styles.photoEmptyIcon}>📷</Text>
                   </View>
-                ))}
-              </ScrollView>
-            </View>
-          </View>
-        )}
-
-        {/* ── 写真選択ボタン ── */}
-        <View style={styles.photoButtonSection}>
-          <TouchableOpacity
-            style={[styles.photoButton, isPicking && styles.photoButtonLoading]}
-            onPress={pickPhotos}
-            disabled={isPicking || isProcessing}
-            activeOpacity={0.85}
-          >
-            {isPicking ? (
-              <ActivityIndicator color={colors.textInverse} size="small" />
-            ) : (
-              <Text style={styles.photoButtonText}>
-                {hasPhotos ? '📷　写真を追加する' : '📷　写真を選ぶ'}
-              </Text>
-            )}
-          </TouchableOpacity>
-          {!hasPhotos && !photoError && (
-            <Text style={styles.noPhotoHint}>写真を選ばずにタイトルだけでも保存できます</Text>
+                  <Text style={styles.photoEmptyTitle}>写真を選ぶ</Text>
+                  <Text style={styles.photoEmptyHelper}>
+                    複数枚まとめて追加できます
+                  </Text>
+                  <View style={styles.photoEmptyButton}>
+                    <Text style={styles.photoEmptyButtonText}>
+                      カメラロールから選ぶ
+                    </Text>
+                  </View>
+                </>
+              )}
+            </TouchableOpacity>
           )}
+
+          {/* Photo error */}
           {photoError ? (
             <View style={styles.errorBox}>
               <Text style={styles.errorText}>{photoError}</Text>
             </View>
           ) : null}
+
+          {!hasPhotos && !photoError && (
+            <Text style={styles.photoSkipHint}>
+              写真なしでタイトルだけでも保存できます
+            </Text>
+          )}
         </View>
 
-        {/* ── ノート情報フォーム ── */}
+        {/* ── Auto Organize Preview ── */}
+        <View style={styles.autoOrganizeSection}>
+          <Text style={styles.sectionLabel}>作成後に自動で整理されます</Text>
+          <View style={styles.autoOrganizeCard}>
+            {AUTO_ORGANIZE_ITEMS.map((item, index) => (
+              <View key={item.title}>
+                <View style={styles.autoOrganizeRow}>
+                  <View style={styles.autoOrganizeIconWrap}>
+                    <Text style={styles.autoOrganizeEmoji}>{item.emoji}</Text>
+                  </View>
+                  <View style={styles.autoOrganizeText}>
+                    <Text style={styles.autoOrganizeTitle}>{item.title}</Text>
+                    <Text style={styles.autoOrganizeDesc}>{item.desc}</Text>
+                  </View>
+                </View>
+                {index < AUTO_ORGANIZE_ITEMS.length - 1 && (
+                  <View style={styles.autoOrganizeDivider} />
+                )}
+              </View>
+            ))}
+          </View>
+        </View>
+
+        {/* ── Basic info form ── */}
         <View style={styles.formSection}>
-          <Text style={styles.sectionLabel}>ノート情報</Text>
+          <Text style={styles.sectionLabel}>ノートの情報</Text>
           <View style={styles.formCard}>
-            {/* タイトル */}
+            {/* Title */}
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>
-                タイトル <Text style={styles.required}>*</Text>
-              </Text>
+              <Text style={styles.inputLabel}>タイトル</Text>
               <TextInput
                 style={styles.textInput}
                 value={title}
@@ -238,14 +278,14 @@ export default function CreateScreen() {
               />
             </View>
 
-            {/* メモ */}
+            {/* Memo */}
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>メモ</Text>
+              <Text style={styles.inputLabel}>メモ（省略可）</Text>
               <TextInput
                 style={[styles.textInput, styles.memoInput]}
                 value={memo}
                 onChangeText={setMemo}
-                placeholder="思い出のメモを入力（省略可）"
+                placeholder="思い出のメモを自由に書いてください"
                 placeholderTextColor={colors.textTertiary}
                 multiline
                 numberOfLines={4}
@@ -255,7 +295,7 @@ export default function CreateScreen() {
               />
             </View>
 
-            {/* ノート種別 */}
+            {/* Note type */}
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>ノートの種類</Text>
               <View style={styles.noteTypesRow}>
@@ -270,7 +310,7 @@ export default function CreateScreen() {
                 <NoteTypeCard
                   emoji="🤝"
                   label="共有ノート"
-                  desc="Phase 11 以降"
+                  desc="ノート作成後に設定"
                   active={noteType === 'shared'}
                   disabled
                   onPress={() => {}}
@@ -278,7 +318,7 @@ export default function CreateScreen() {
               </View>
             </View>
 
-            {/* フォームエラー */}
+            {/* Form error */}
             {error ? (
               <View style={styles.errorBox}>
                 <Text style={styles.errorText}>{error}</Text>
@@ -287,25 +327,33 @@ export default function CreateScreen() {
           </View>
         </View>
 
-        {/* ── 保存 / アップロード進捗 ── */}
+        {/* ── Save / progress section ── */}
         <View style={styles.saveSection}>
-          {isUploading ? (
-            /* アップロード中: 進捗バー表示 */
+          {isSaving ? (
+            /* Note creation in progress */
+            <View style={styles.creatingContainer}>
+              <ActivityIndicator color={colors.primary} size="small" />
+              <Text style={styles.creatingText}>
+                思い出ノートを作成しています...
+              </Text>
+            </View>
+          ) : isUploading ? (
+            /* Photo upload in progress */
             <View style={styles.uploadProgressSection}>
               <Text style={styles.uploadProgressLabel}>
-                写真をアップロード中... {Math.round(uploadProgress)}%
+                写真をアップロードしています... {Math.round(uploadProgress)}%
               </Text>
               <View style={styles.progressBarTrack}>
                 <View
                   style={[
                     styles.progressBarFill,
-                    { width: `${Math.round(uploadProgress)}%` },
+                    { width: `${Math.round(uploadProgress)}%` as `${number}%` },
                   ]}
                 />
               </View>
             </View>
           ) : uploadError && createdNoteId ? (
-            /* アップロード失敗（ノートは作成済み） */
+            /* Upload failed but note was created */
             <View style={styles.uploadErrorSection}>
               <View style={styles.errorBox}>
                 <Text style={styles.errorText}>
@@ -322,27 +370,22 @@ export default function CreateScreen() {
               </TouchableOpacity>
             </View>
           ) : (
-            /* 通常: 保存ボタン */
+            /* Normal: create button */
             <>
               <TouchableOpacity
-                style={[
-                  styles.saveButton,
-                  (isProcessing || !title.trim()) && styles.saveButtonDisabled,
-                ]}
+                style={[styles.saveButton, !canCreate && styles.saveButtonDisabled]}
                 onPress={handleSave}
-                disabled={isProcessing || !title.trim()}
+                disabled={!canCreate}
                 activeOpacity={0.85}
               >
-                {isSaving ? (
-                  <ActivityIndicator color={colors.textInverse} size="small" />
-                ) : (
-                  <Text style={styles.saveButtonText}>ノートを作成する</Text>
-                )}
+                <Text style={styles.saveButtonText}>思い出ノートを作成</Text>
               </TouchableOpacity>
               <Text style={styles.saveNote}>
-                {hasPhotos
-                  ? `選択した${photos.length}枚の写真をノートに保存します`
-                  : 'タイトルのみでノートを作成します'}
+                {!title.trim()
+                  ? 'タイトルを入力するとノートを作成できます'
+                  : hasPhotos
+                    ? `${photos.length}枚の写真とともに思い出を保存します`
+                    : 'タイトルのみでノートを作成します'}
               </Text>
             </>
           )}
@@ -390,148 +433,171 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+
+  // ── Header ──────────────────────────────────────
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 4,
+    paddingBottom: 12,
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    gap: 8,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.surfaceIvory,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  backButtonText: {
+    fontSize: 20,
+    color: colors.textPrimary,
+    lineHeight: 24,
+  },
+  headerCenter: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  headerTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    letterSpacing: -0.2,
+  },
+  headerSubtitle: {
+    fontSize: 11,
+    color: colors.textTertiary,
+    marginTop: 2,
+    textAlign: 'center',
+  },
+  headerRight: {
+    width: 40,
+    flexShrink: 0,
+  },
+
+  // ── Scroll ──────────────────────────────────────
   scroll: {
     paddingBottom: 48,
   },
-  // Hero
-  hero: {
-    alignItems: 'center',
-    paddingHorizontal: 32,
-    paddingTop: 36,
-    paddingBottom: 28,
-  },
-  heroEmoji: {
-    fontSize: 56,
-    marginBottom: 16,
-  },
-  heroTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    textAlign: 'center',
-    lineHeight: 32,
-    marginBottom: 10,
-    letterSpacing: -0.3,
-  },
-  heroDescription: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-  // Steps
-  stepsSection: {
+
+  // ── Photo section ──────────────────────────────────────
+  photoSection: {
     paddingHorizontal: 20,
-    marginBottom: 24,
+    paddingTop: 20,
+    gap: 10,
   },
-  sectionLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.textTertiary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    marginBottom: 12,
-  },
-  stepsCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-  },
-  stepRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingVertical: 14,
-    gap: 12,
-  },
-  stepNumberBadge: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+
+  // No photos: large tappable card
+  photoEmptyCard: {
+    height: 220,
     backgroundColor: colors.surfaceIvory,
+    borderRadius: 20,
     borderWidth: 1.5,
     borderColor: colors.border,
+    borderStyle: 'dashed',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 1,
-  },
-  stepNumberText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.textSecondary,
-  },
-  stepEmoji: {
-    fontSize: 20,
-    marginTop: -1,
-  },
-  stepContent: {
-    flex: 1,
-  },
-  stepTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.textPrimary,
-    marginBottom: 3,
-  },
-  stepDescription: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    lineHeight: 19,
-  },
-  stepConnector: {
-    width: 1.5,
-    height: 10,
-    backgroundColor: colors.border,
-    marginLeft: 27,
-  },
-  // Selected photos
-  selectedPhotosSection: {
-    paddingTop: 24,
-    paddingBottom: 8,
-    gap: 12,
-  },
-  photoCountRow: {
-    paddingHorizontal: 20,
-  },
-  photoCountChip: {
-    alignSelf: 'flex-start',
-    backgroundColor: colors.primaryLight,
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderWidth: 1,
-    borderColor: colors.primary,
-  },
-  photoCountText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.primary,
-  },
-  thumbnailScrollContainer: {
-    height: 100,
-  },
-  thumbnailList: {
-    paddingHorizontal: 20,
     gap: 10,
+  },
+  photoEmptyIconWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: 20,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+    shadowColor: colors.black,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  photoEmptyIcon: {
+    fontSize: 36,
+  },
+  photoEmptyTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  photoEmptyHelper: {
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+  photoEmptyButton: {
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 24,
+    marginTop: 4,
+  },
+  photoEmptyButtonText: {
+    color: colors.textInverse,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  photoButtonDisabled: {
+    opacity: 0.6,
+  },
+
+  // Photos selected: cover card
+  photoCoverCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+  },
+  photoCoverWrap: {
+    height: 200,
+    position: 'relative',
+  },
+  photoCoverImage: {
+    width: '100%',
+    height: '100%',
+  },
+  photoCountBadge: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  photoCountBadgeText: {
+    color: colors.textInverse,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  photoStrip: {
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    gap: 8,
     alignItems: 'center',
   },
-  thumbnailWrapper: {
+  photoStripItem: {
     position: 'relative',
-    width: 88,
-    height: 88,
+    width: 72,
+    height: 72,
   },
-  thumbnail: {
-    width: 88,
-    height: 88,
+  photoStripImage: {
+    width: 72,
+    height: 72,
     borderRadius: 10,
     backgroundColor: colors.surfaceIvory,
   },
   removeButton: {
     position: 'absolute',
-    top: 4,
-    right: 4,
+    top: 3,
+    right: 3,
     width: 22,
     height: 22,
     borderRadius: 11,
@@ -546,37 +612,93 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     marginTop: -1,
   },
-  // Photo button
-  photoButtonSection: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 8,
-    gap: 10,
+  photoAddButtonWrap: {
+    paddingHorizontal: 12,
+    paddingBottom: 12,
   },
-  photoButton: {
-    backgroundColor: colors.primary,
-    borderRadius: 14,
-    paddingVertical: 16,
+  photoAddButton: {
+    backgroundColor: colors.surfaceIvory,
+    borderRadius: 12,
+    paddingVertical: 12,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  photoButtonLoading: {
-    opacity: 0.75,
+  photoAddButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
   },
-  photoButtonText: {
-    color: colors.textInverse,
-    fontSize: 17,
-    fontWeight: '700',
-  },
-  noPhotoHint: {
+
+  photoSkipHint: {
     fontSize: 12,
     color: colors.textTertiary,
     textAlign: 'center',
+  },
+
+  // ── Auto organize ──────────────────────────────────────
+  autoOrganizeSection: {
+    paddingHorizontal: 20,
+    paddingTop: 28,
+    gap: 12,
+  },
+  sectionLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textTertiary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  autoOrganizeCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+  },
+  autoOrganizeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 12,
+  },
+  autoOrganizeIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: colors.surfaceIvory,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  autoOrganizeEmoji: {
+    fontSize: 20,
+  },
+  autoOrganizeText: {
+    flex: 1,
+  },
+  autoOrganizeTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    marginBottom: 2,
+  },
+  autoOrganizeDesc: {
+    fontSize: 12,
+    color: colors.textSecondary,
     lineHeight: 18,
   },
-  // Form
+  autoOrganizeDivider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginLeft: 68,
+  },
+
+  // ── Form ──────────────────────────────────────
   formSection: {
     paddingHorizontal: 20,
-    paddingTop: 24,
+    paddingTop: 28,
     gap: 12,
   },
   formCard: {
@@ -596,9 +718,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.textSecondary,
     letterSpacing: 0.3,
-  },
-  required: {
-    color: colors.error,
   },
   textInput: {
     backgroundColor: colors.surfaceIvory,
@@ -649,7 +768,8 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: 'center',
   },
-  // Error
+
+  // ── Error ──────────────────────────────────────
   errorBox: {
     backgroundColor: '#FEF2F2',
     borderRadius: 10,
@@ -663,22 +783,41 @@ const styles = StyleSheet.create({
     color: colors.error,
     lineHeight: 20,
   },
-  // Save section
+
+  // ── Save section ──────────────────────────────────────
   saveSection: {
     paddingHorizontal: 20,
-    paddingTop: 24,
+    paddingTop: 28,
     gap: 10,
     alignItems: 'center',
   },
+  creatingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 8,
+  },
+  creatingText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    fontWeight: '500',
+  },
   saveButton: {
     backgroundColor: colors.primary,
-    borderRadius: 14,
+    borderRadius: 16,
     paddingVertical: 16,
     alignItems: 'center',
     alignSelf: 'stretch',
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
   },
   saveButtonDisabled: {
     opacity: 0.4,
+    shadowOpacity: 0,
+    elevation: 0,
   },
   saveButtonText: {
     color: colors.textInverse,
@@ -691,7 +830,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 18,
   },
-  // Upload progress
   uploadProgressSection: {
     alignSelf: 'stretch',
     gap: 10,
@@ -713,7 +851,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     borderRadius: 3,
   },
-  // Upload error (note created but photos failed)
   uploadErrorSection: {
     alignSelf: 'stretch',
     gap: 12,
