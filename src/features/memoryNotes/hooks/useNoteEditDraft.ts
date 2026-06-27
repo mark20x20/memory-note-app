@@ -16,11 +16,17 @@ import type { NoteEditDraft } from '../types/edit';
 // ── ヘルパー ──────────────────────────────────────────────────────────────────
 
 function noteToInitialDraft(note: NoteDoc): NoteEditDraft {
+  // UI-26: memoryDate 優先。既存ノートは null → createdAt fallback は表示側で処理
+  const memoryDate =
+    note.memoryDate?.toDate?.() ??
+    note.createdAt?.toDate?.() ??
+    null;
   return {
     title: note.title,
     memo: note.memo ?? '',
     aiDiary: note.aiDiary ?? '',
     noteType: note.noteType,
+    memoryDate,
   };
 }
 
@@ -68,13 +74,15 @@ export function useNoteEditDraft(noteId: string | null): UseNoteEditDraftResult 
   }, [note]);
 
   // isDirty: フィールドを1つずつ比較（JSON.stringifyは参照型に弱いためフィールド比較）
+  // UI-26: memoryDate は Date 型なので getTime() で比較
   const isDirty =
     draft !== null &&
     original !== null &&
     (draft.title !== original.title ||
       draft.memo !== original.memo ||
       draft.aiDiary !== original.aiDiary ||
-      draft.noteType !== original.noteType);
+      draft.noteType !== original.noteType ||
+      (draft.memoryDate?.getTime() ?? null) !== (original.memoryDate?.getTime() ?? null));
 
   function updateField<K extends keyof NoteEditDraft>(key: K, value: NoteEditDraft[K]) {
     setDraft((prev) => (prev ? { ...prev, [key]: value } : prev));
@@ -103,6 +111,8 @@ export function useNoteEditDraft(noteId: string | null): UseNoteEditDraftResult 
         memo: draft.memo,
         noteType: draft.noteType,
         ...(hasAiDiary ? { aiDiary: draft.aiDiary } : {}),
+        // UI-26: memoryDate を常に保存（null も含めて更新）
+        memoryDate: draft.memoryDate,
       });
       // 保存成功後はoriginalを更新してisDirtyをfalseにする
       setOriginal({ ...draft });

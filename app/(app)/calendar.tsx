@@ -19,6 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@/shared/theme/colors';
 import { borderRadius } from '@/shared/theme/spacing';
 import { useMemoryNotesList } from '@/features/memoryNotes/hooks/useMemoryNotesList';
+import { getMemoryDate, toLocalDateKey } from '@/features/memoryNotes/utils/noteDate';
 import type { NoteDoc } from '@/core/repositories/noteRepository';
 
 // ── 定数 ──────────────────────────────────────────────────────────────────────
@@ -27,13 +28,14 @@ const DAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
 
 // ── ヘルパー関数 ───────────────────────────────────────────────────────────────
 
-function toLocalDateKey(date: Date): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-}
-
+/**
+ * UI-26: memoryDate 優先で日付キーを生成する。
+ * 既存ノートは memoryDate がないため createdAt fallback で表示する。
+ * 優先順位: memoryDate > createdAt > updatedAt
+ */
 function noteToDateKey(note: NoteDoc): string | null {
-  if (!note.createdAt) return null;
-  const date = note.createdAt.toDate();
+  const date = getMemoryDate(note);
+  if (!date) return null;
   return toLocalDateKey(date);
 }
 

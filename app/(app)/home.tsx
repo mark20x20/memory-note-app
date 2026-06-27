@@ -11,11 +11,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@/shared/theme/colors';
 import { useMemoryNotesList } from '@/features/memoryNotes/hooks/useMemoryNotesList';
+import { formatMemoryDate } from '@/features/memoryNotes/utils/noteDate';
 import type { NoteDoc } from '@/core/repositories/noteRepository';
-
-function formatDate(date: Date): string {
-  return `${date.getFullYear()}/${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')}`;
-}
 
 export default function HomeScreen() {
   const { notes, isLoading, error } = useMemoryNotesList();
@@ -159,7 +156,8 @@ function CreateCtaCard() {
 }
 
 function NoteCard({ note, onPress }: { note: NoteDoc; onPress: () => void }) {
-  const dateStr = note.createdAt?.toDate ? formatDate(note.createdAt.toDate()) : null;
+  // UI-26: memoryDate 優先。既存ノートは createdAt fallback
+  const dateStr = formatMemoryDate(note);
   const placeLabel = note.visitedPlacesSummary?.topPlaceLabels?.[0] ?? null;
   const displayTitle = note.title.trim() || '無題の思い出';
 

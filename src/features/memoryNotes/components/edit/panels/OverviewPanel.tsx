@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { colors } from '@/shared/theme/colors';
 import { borderRadius } from '@/shared/theme/spacing';
+import { formatDateLabel, addDays } from '@/features/memoryNotes/utils/noteDate';
 import type { NoteDoc } from '@/core/repositories/noteRepository';
 import type { PhotoDoc } from '@/core/repositories/photoRepository';
 import type { NoteEditDraft } from '@/features/memoryNotes/types/edit';
@@ -121,15 +122,48 @@ export function OverviewPanel({
         />
       </View>
 
-      {/* 日付 */}
-      {dateStr ? (
-        <View style={styles.field}>
-          <Text style={styles.fieldLabel}>日付</Text>
-          <View style={styles.readonlyRow}>
-            <Text style={styles.readonlyText}>📅 {dateStr}</Text>
+      {/* UI-26: 思い出の日付（編集可） */}
+      <View style={styles.field}>
+        <Text style={styles.fieldLabel}>思い出の日付</Text>
+        <View style={styles.dateSelector}>
+          <TouchableOpacity
+            style={styles.dateStepper}
+            onPress={() =>
+              updateField('memoryDate', addDays(draft.memoryDate ?? new Date(), -1))
+            }
+            disabled={isBusy}
+            hitSlop={8}
+          >
+            <Text style={styles.dateStepperText}>‹</Text>
+          </TouchableOpacity>
+          <View style={styles.dateLabelWrap}>
+            <Text style={styles.dateLabelText}>
+              {draft.memoryDate ? formatDateLabel(draft.memoryDate) : (dateStr ? `📅 ${dateStr}` : '—')}
+            </Text>
           </View>
+          <TouchableOpacity
+            style={styles.dateStepper}
+            onPress={() =>
+              updateField('memoryDate', addDays(draft.memoryDate ?? new Date(), 1))
+            }
+            disabled={isBusy}
+            hitSlop={8}
+          >
+            <Text style={styles.dateStepperText}>›</Text>
+          </TouchableOpacity>
         </View>
-      ) : null}
+        <TouchableOpacity
+          onPress={() => {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            updateField('memoryDate', today);
+          }}
+          disabled={isBusy}
+          hitSlop={8}
+        >
+          <Text style={styles.dateTodayLink}>今日に設定</Text>
+        </TouchableOpacity>
+      </View>
 
       {/* UI-16: 共有設定 (旧: ノートの種類) */}
       <View style={styles.field}>
@@ -272,6 +306,46 @@ const styles = StyleSheet.create({
   readonlyText: {
     fontSize: 14,
     color: colors.textSecondary,
+  },
+  // UI-26: Date selector
+  dateSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surfaceIvory,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+  },
+  dateStepper: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dateStepperText: {
+    fontSize: 24,
+    lineHeight: 28,
+    color: colors.textSecondary,
+    fontWeight: '300',
+  },
+  dateLabelWrap: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  dateLabelText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    letterSpacing: -0.2,
+  },
+  dateTodayLink: {
+    fontSize: 12,
+    color: colors.primary,
+    fontWeight: '500',
+    textAlign: 'center',
+    marginTop: 2,
   },
   noteTypeRow: {
     flexDirection: 'row',

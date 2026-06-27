@@ -32,10 +32,7 @@ import { VisitTimelineSection } from '@/features/placeIntelligence/components/Vi
 import { EventMapPreview } from '@/features/placeIntelligence/components/EventMapPreview';
 import { useAuth } from '@/core/auth/AuthContext';
 import { canEdit } from '@/features/memoryNotes/utils/permissions';
-
-function formatDate(date: Date): string {
-  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
-}
+import { formatMemoryDate } from '@/features/memoryNotes/utils/noteDate';
 
 // ── Loading / Error headers ────────────────────────────────
 function MinimalHeader({ onBack }: { onBack: () => void }) {
@@ -108,7 +105,8 @@ export default function NotePreviewScreen() {
     );
   }
 
-  const dateStr = note.createdAt?.toDate ? formatDate(note.createdAt.toDate()) : null;
+  // UI-26: memoryDate 優先。既存ノートは createdAt fallback（formatMemoryDate が処理）
+  const dateStr = formatMemoryDate(note);
   const placeLabel = note.visitedPlacesSummary?.topPlaceLabels?.[0] ?? null;
 
   return (

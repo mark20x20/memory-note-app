@@ -21,6 +21,8 @@ export interface NoteInput {
   title: string;
   memo: string;
   noteType: NoteType;
+  /** UI-26: 思い出の日付（省略時は serverTimestamp を createdAt として使用） */
+  memoryDate?: Date | null;
 }
 
 // Phase 10: ノート編集入力
@@ -30,6 +32,8 @@ export interface NoteUpdateInput {
   noteType: NoteType;
   /** undefined = AI日記を変更しない。string（空文字含む）= 値を更新してステータスを 'edited' にする */
   aiDiary?: string;
+  /** UI-26: 思い出の日付。undefined = 変更しない。null = フィールドを消去しない（既存値維持） */
+  memoryDate?: Date | null;
 }
 
 export interface NoteDoc {
@@ -40,6 +44,8 @@ export interface NoteDoc {
   noteType: NoteType;
   createdAt: Timestamp | null;
   updatedAt: Timestamp | null;
+  /** UI-26: 思い出の日付。既存ノートには存在しない可能性がある（createdAt fallback） */
+  memoryDate?: Timestamp | null;
   members: Record<string, MemberRole>;
   /** Phase 7: 代表写真URL（先頭写真のdownloadURL）*/
   coverPhotoURL?: string | null;
@@ -81,6 +87,10 @@ export const noteRepository = {
       members: { [uid]: 'owner' as MemberRole },
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
+      // UI-26: 思い出の日付。Date → Timestamp 変換
+      ...(input.memoryDate != null
+        ? { memoryDate: Timestamp.fromDate(input.memoryDate) }
+        : {}),
     });
     return docRef.id;
   },
@@ -124,6 +134,12 @@ export const noteRepository = {
       updateData.aiDiary = input.aiDiary;
       updateData.aiDiaryStatus = 'edited';
       updateData.aiDiaryUpdatedAt = serverTimestamp();
+    }
+    // UI-26: memoryDate が明示的に渡された場合のみ更新
+    if (input.memoryDate !== undefined) {
+      updateData.memoryDate = input.memoryDate != null
+        ? Timestamp.fromDate(input.memoryDate)
+        : null;
     }
     await updateDoc(noteRef, updateData);
   },

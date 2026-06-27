@@ -12,6 +12,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@/shared/theme/colors';
+import { borderRadius } from '@/shared/theme/spacing';
+import { formatDateLabel, addDays } from '@/features/memoryNotes/utils/noteDate';
 import { useCreateNote } from '@/features/memoryNotes/hooks/useCreateNote';
 import { usePhotoPicker } from '@/features/photos/hooks/usePhotoPicker';
 import { usePhotoUpload } from '@/features/photos/hooks/usePhotoUpload';
@@ -44,6 +46,7 @@ export default function CreateScreen() {
     title, setTitle,
     memo, setMemo,
     noteType, setNoteType,
+    memoryDate, setMemoryDate,
     isSaving, error, saveNote,
   } = useCreateNote();
 
@@ -293,6 +296,43 @@ export default function CreateScreen() {
                 textAlignVertical="top"
                 editable={!isProcessing}
               />
+            </View>
+
+            {/* Memory Date */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>思い出の日付</Text>
+              <View style={styles.dateSelector}>
+                <TouchableOpacity
+                  style={styles.dateStepper}
+                  onPress={() => setMemoryDate(addDays(memoryDate, -1))}
+                  disabled={isProcessing}
+                  hitSlop={8}
+                >
+                  <Text style={styles.dateStepperText}>‹</Text>
+                </TouchableOpacity>
+                <View style={styles.dateLabelWrap}>
+                  <Text style={styles.dateLabelText}>{formatDateLabel(memoryDate)}</Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.dateStepper}
+                  onPress={() => setMemoryDate(addDays(memoryDate, 1))}
+                  disabled={isProcessing}
+                  hitSlop={8}
+                >
+                  <Text style={styles.dateStepperText}>›</Text>
+                </TouchableOpacity>
+              </View>
+              <TouchableOpacity
+                onPress={() => {
+                  const today = new Date();
+                  today.setHours(0, 0, 0, 0);
+                  setMemoryDate(today);
+                }}
+                disabled={isProcessing}
+                hitSlop={8}
+              >
+                <Text style={styles.dateTodayLink}>今日に設定</Text>
+              </TouchableOpacity>
             </View>
 
             {/* Note type */}
@@ -732,6 +772,46 @@ const styles = StyleSheet.create({
   memoInput: {
     minHeight: 88,
     paddingTop: 11,
+  },
+  // UI-26: Date selector
+  dateSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surfaceIvory,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+  },
+  dateStepper: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dateStepperText: {
+    fontSize: 24,
+    lineHeight: 28,
+    color: colors.textSecondary,
+    fontWeight: '300',
+  },
+  dateLabelWrap: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  dateLabelText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    letterSpacing: -0.2,
+  },
+  dateTodayLink: {
+    fontSize: 12,
+    color: colors.primary,
+    fontWeight: '500',
+    textAlign: 'center',
+    marginTop: 2,
   },
   noteTypesRow: {
     flexDirection: 'row',
