@@ -72,12 +72,12 @@ export default function NotePreviewScreen() {
   const handleConvertToShared = () => {
     if (!noteId) return;
     Alert.alert(
-      'このノートを共有しますか？',
-      '共有ノートに変更すると、メンバーを招待できるようになります。',
+      'メンバーを招待しますか？',
+      'メンバーを招待すると、このノートが共有ノートになります。',
       [
         { text: 'キャンセル', style: 'cancel' },
         {
-          text: '共有して招待する',
+          text: '招待へ進む',
           onPress: () => router.push(`/(app)/notes/${noteId}/members` as any),
         },
       ]
