@@ -19,7 +19,7 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ScreenHeader, EditTabBar, StickyBottomBar } from '@/shared/components/ui';
+import { EditTabBar, StickyBottomBar } from '@/shared/components/ui';
 import { colors } from '@/shared/theme/colors';
 import { borderRadius } from '@/shared/theme/spacing';
 import { useAuth } from '@/core/auth/AuthContext';
@@ -138,7 +138,11 @@ export default function NoteEditScreen() {
   if (isLoadingNote || !draft) {
     return (
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-        <ScreenHeader title="編集" onBack={() => router.back()} />
+        <View style={styles.minimalHeader}>
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()} hitSlop={8}>
+            <Text style={styles.backButtonText}>‹</Text>
+          </TouchableOpacity>
+        </View>
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>読み込み中...</Text>
@@ -150,7 +154,11 @@ export default function NoteEditScreen() {
   if (!note) {
     return (
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-        <ScreenHeader title="編集" onBack={() => router.back()} />
+        <View style={styles.minimalHeader}>
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()} hitSlop={8}>
+            <Text style={styles.backButtonText}>‹</Text>
+          </TouchableOpacity>
+        </View>
         <View style={styles.centered}>
           <Text style={styles.errorText}>ノートが見つかりませんでした</Text>
         </View>
@@ -162,7 +170,11 @@ export default function NoteEditScreen() {
   if (!userCanEdit) {
     return (
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-        <ScreenHeader title="編集" onBack={() => router.back()} />
+        <View style={styles.minimalHeader}>
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()} hitSlop={8}>
+            <Text style={styles.backButtonText}>‹</Text>
+          </TouchableOpacity>
+        </View>
         <View style={styles.centered}>
           <Text style={styles.errorText}>🔒 編集権限がありません</Text>
           <Text style={styles.errorDetail}>
@@ -177,18 +189,22 @@ export default function NoteEditScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScreenHeader
-        title="編集"
-        onBack={() => router.back()}
-        rightElement={
-          <TouchableOpacity
-            onPress={() => router.push(`/(app)/notes/${noteId}/preview` as any)}
-            hitSlop={8}
-          >
-            <Text style={styles.previewButtonText}>プレビュー</Text>
-          </TouchableOpacity>
-        }
-      />
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.backButton} onPress={() => router.back()} hitSlop={8}>
+          <Text style={styles.backButtonText}>‹</Text>
+        </TouchableOpacity>
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerTitle}>ノートを編集</Text>
+          <Text style={styles.headerSubtitle}>写真・場所・日記を整えましょう</Text>
+        </View>
+        <TouchableOpacity
+          style={styles.previewButton}
+          onPress={() => router.push(`/(app)/notes/${noteId}/preview` as any)}
+          hitSlop={8}
+        >
+          <Text style={styles.previewButtonText}>プレビュー</Text>
+        </TouchableOpacity>
+      </View>
 
       {/* タブバー */}
       <EditTabBar
@@ -374,10 +390,65 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
   },
-  previewButtonText: {
-    fontSize: 14,
-    fontWeight: '500',
+  // Custom header
+  minimalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    gap: 8,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.surfaceIvory,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  backButtonText: {
+    fontSize: 26,
+    lineHeight: 30,
+    color: colors.textPrimary,
+    fontWeight: '300',
+  },
+  headerCenter: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 1,
+  },
+  headerTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    letterSpacing: -0.3,
+  },
+  headerSubtitle: {
+    fontSize: 11,
     color: colors.textSecondary,
+  },
+  previewButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.primaryLight,
+  },
+  previewButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.primary,
   },
   scroll: {
     paddingBottom: 16,

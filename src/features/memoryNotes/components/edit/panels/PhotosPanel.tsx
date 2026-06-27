@@ -109,9 +109,6 @@ export function PhotosPanel({
           );
         })}
       </View>
-      <Text style={styles.reorderHint}>
-        並び替えはUI-3で実装予定です。
-      </Text>
     </View>
   );
 }
@@ -180,12 +177,6 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.5,
-  },
-  reorderHint: {
-    fontSize: 11,
-    color: colors.textTertiary,
-    textAlign: 'center',
-    marginTop: 4,
   },
   // Loading / Empty
   centered: {

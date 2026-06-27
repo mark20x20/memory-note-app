@@ -52,12 +52,12 @@ export function OverviewPanel({
   const handleRequestConvertToShared = () => {
     if (isBusy || draft.noteType === 'shared') return;
     Alert.alert(
-      'このノートを共有しますか？',
-      '共有ノートに変更すると、メンバーを招待できるようになります。',
+      'メンバーを招待しますか？',
+      'メンバーを招待すると、このノートが共有ノートになります。',
       [
         { text: 'キャンセル', style: 'cancel' },
         {
-          text: '共有して招待する',
+          text: '招待へ進む',
           onPress: () => onRequestShare(),
         },
       ]
@@ -68,12 +68,12 @@ export function OverviewPanel({
   const handleRequestConvertToPersonal = () => {
     if (isBusy || draft.noteType === 'personal' || !isOwner) return;
     Alert.alert(
-      '個人ノートに戻しますか？',
-      'メンバー全員がこのノートにアクセスできなくなります。この操作は取り消せません。',
+      'このノートを自分だけに戻しますか？',
+      'メンバーはこのノートを見られなくなります。写真やメモは削除されません。',
       [
         { text: 'キャンセル', style: 'cancel' },
         {
-          text: '個人に戻す',
+          text: '自分だけに戻す',
           style: 'destructive',
           onPress: () => onConvertToPersonal(),
         },

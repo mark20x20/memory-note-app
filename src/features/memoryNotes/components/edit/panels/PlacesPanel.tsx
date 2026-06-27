@@ -45,9 +45,9 @@ export function PlacesPanel({ noteId, groups, isLoadingGroups, userCanEdit }: Pl
     return (
       <View style={styles.emptyState}>
         <Text style={styles.emptyEmoji}>📍</Text>
-        <Text style={styles.emptyTitle}>場所がありません</Text>
+        <Text style={styles.emptyTitle}>場所を整理中です</Text>
         <Text style={styles.emptyDesc}>
-          写真からフローを作成すると、場所が自動で抽出されます。
+          写真の位置情報から候補を探しています。
         </Text>
       </View>
     );

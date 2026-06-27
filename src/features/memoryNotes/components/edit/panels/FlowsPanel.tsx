@@ -96,9 +96,9 @@ export function FlowsPanel({ noteId, groups, isLoadingGroups, isBusy }: FlowsPan
       {groups.length === 0 ? (
         <View style={styles.emptyState}>
           <Text style={styles.emptyEmoji}>🗓️</Text>
-          <Text style={styles.emptyTitle}>フローがありません</Text>
+          <Text style={styles.emptyTitle}>場所と流れを整理中です</Text>
           <Text style={styles.emptyDesc}>
-            写真をアップロードしてから「この日の流れを再作成」してください。
+            写真の情報から、その日の流れを作っています。
           </Text>
         </View>
       ) : (
