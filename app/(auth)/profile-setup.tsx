@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { auth } from '@/core/firebase/client';
 import { userRepository } from '@/core/repositories/userRepository';
+import { useRefreshAuth } from '@/core/auth/AuthContext';
 
 const { width } = Dimensions.get('window');
 
@@ -22,6 +23,7 @@ export default function ProfileSetupScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const refreshAuth = useRefreshAuth();
   const uid = auth?.currentUser?.uid ?? null;
   const email = auth?.currentUser?.email ?? null;
 
@@ -39,6 +41,10 @@ export default function ProfileSetupScreen() {
     setError(null);
     try {
       await userRepository.createUser(uid, email, displayName.trim());
+      // Firestore writes don't trigger onAuthStateChanged, so manually re-fetch
+      // the user profile to transition AuthContext from needsProfileSetup → signedIn.
+      // Without this, (app)/_layout.tsx would redirect back to onboarding.
+      await refreshAuth();
       router.replace('/(app)/home');
     } catch {
       setError('プロフィールの保存に失敗しました。もう一度お試しください。');
